@@ -196,6 +196,7 @@ function register({ ipcMain, queue, store, tools, send }) {
       addHistory({
         id: randomUUID(),
         title: options.title,
+        thumbnail: options.thumbnail ?? null,
         url: options.url,
         mode: options.mode,
         files: saved,

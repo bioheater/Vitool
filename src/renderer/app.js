@@ -3,34 +3,19 @@ import downloadPage from './pages/download.js';
 import cutPage from './pages/cut.js';
 import convertPage from './pages/convert.js';
 import toolsPage from './pages/tools.js';
+import mkvPage from './pages/mkv.js';
 import { mountQueuePanel } from './components/queue-panel.js';
 import { checkTools } from './components/tools-dialog.js';
-
-const ICONS = {
-  download: 'M12 3v12m0 0 5-5m-5 5-5-5M4 20h16',
-  cut: 'M6 6a2.5 2.5 0 1 0 0 .01M6 18a2.5 2.5 0 1 0 0 .01M8 7.5 20 18M8 16.5 20 6',
-  convert: 'M4 8h13l-3-3m6 11H7l3 3',
-  tools: 'M14.5 5.5a4 4 0 0 0-5 5L4 16l4 4 5.5-5.5a4 4 0 0 0 5-5L16 12l-4-4z',
-};
+import { icon } from './utils/dom.js';
+import { ICONS } from './utils/icons.js';
 
 // Neue Bereiche: Seite anlegen und hier eintragen.
-const pages = [downloadPage, cutPage, convertPage, toolsPage];
+const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage];
 
 const nav = document.getElementById('nav');
 const pageRoot = document.getElementById('page');
 const navButtons = new Map();
 const pageRoots = new Map();
-
-function icon(path) {
-  const svgNs = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNs, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('aria-hidden', 'true');
-  const shape = document.createElementNS(svgNs, 'path');
-  shape.setAttribute('d', path);
-  svg.append(shape);
-  return svg;
-}
 
 function showPage(id, data) {
   pages.forEach((page) => {

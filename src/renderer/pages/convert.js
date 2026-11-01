@@ -1,5 +1,5 @@
 // Bereich Konvertieren: Zielformat, Zielgröße, Auflösung und Hochformat wählen.
-import { el } from '../utils/dom.js';
+import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
@@ -169,7 +169,14 @@ function buildPage(root) {
 
   parts = {
     message: el('p', { class: 'message', role: 'alert', hidden: true }),
-    drop: createFileDrop({ onFile: openFile }),
+    drop: createFileDrop({
+      onFile: openFile,
+      features: [
+        { iconName: 'convert', title: 'Jedes Format', text: 'MP4, MKV, WebM, MP3, WAV und mehr' },
+        { iconName: 'shrink', title: 'Zielgröße', text: 'Zum Beispiel unter 25 MB zum Verschicken' },
+        { iconName: 'phone', title: 'Hochformat', text: 'Auf 9:16 zuschneiden für Reels und Shorts' },
+      ],
+    }),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
     info: el('p', { class: 'muted' }),
@@ -276,7 +283,7 @@ function buildPage(root) {
     ),
   );
 
-  root.append(el('h1', {}, 'Konvertieren'), parts.message, parts.drop, parts.workspace);
+  root.append(pageHeader('Konvertieren', 'Format, Größe und Bild passend machen.'), parts.message, parts.drop, parts.workspace);
 }
 
 export default {

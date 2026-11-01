@@ -23,6 +23,10 @@ const INVOKE_CHANNELS = [
   'convert:start',
   'dialog:pickSubtitle',
   'tools:start',
+  'dialog:pickTrack',
+  'mkv:read',
+  'mkv:save',
+  'mkv:extract',
 ];
 
 const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'app:openInCut'];

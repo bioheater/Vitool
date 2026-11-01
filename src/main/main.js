@@ -13,6 +13,7 @@ const features = [
   require('./features/cut'),
   require('./features/convert'),
   require('./features/tools'),
+  require('./features/mkv'),
 ];
 
 let win = null;
@@ -78,6 +79,17 @@ app.whenReady().then(() => {
       properties: ['openFile'],
       filters: [
         { name: 'Videos und Audio', extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'mp3', 'm4a', 'wav'] },
+        { name: 'Alle Dateien', extensions: ['*'] },
+      ],
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
+  ipcMain.handle('dialog:pickTrack', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Spur hinzufügen',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Audio, Untertitel und Video', extensions: ['mp3', 'm4a', 'aac', 'ac3', 'flac', 'mka', 'ogg', 'opus', 'wav', 'srt', 'ass', 'ssa', 'vtt', 'mkv', 'mp4', 'webm'] },
         { name: 'Alle Dateien', extensions: ['*'] },
       ],
     });

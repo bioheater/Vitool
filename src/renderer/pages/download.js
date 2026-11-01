@@ -1,5 +1,6 @@
 // Bereich Download: Link prüfen, Optionen und Abschnitte wählen, Aufgabe starten.
-import { el } from '../utils/dom.js';
+import { el, icon, pageHeader } from '../utils/dom.js';
+import { ICONS } from '../utils/icons.js';
 import { formatTime } from '../utils/time.js';
 import { SectionEditor } from '../components/section-editor.js';
 
@@ -102,6 +103,7 @@ async function startDownload() {
   const response = await invoke('download:start', {
     url: info.url,
     title: info.title,
+    thumbnail: info.thumbnail,
     duration: info.duration,
     mode: state.mode,
     height: Number(parts.quality.value) || null,
@@ -123,10 +125,20 @@ async function chooseFolder() {
   parts.folder.title = folder;
 }
 
+// Ohne Bild, etwa bei älteren Einträgen oder ohne Internet, erscheint ein Symbol.
+function historyThumb(entry) {
+  const fallback = el('span', { class: 'history-thumb placeholder' }, icon(entry.mode === 'audio' ? ICONS.music : ICONS.download));
+  if (!entry.thumbnail) return fallback;
+  const image = el('img', { class: 'history-thumb', alt: '', src: entry.thumbnail, loading: 'lazy' });
+  image.addEventListener('error', () => image.replaceWith(fallback));
+  return image;
+}
+
 function historyRow(entry) {
   const date = new Date(entry.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
   const count = entry.files.length > 1 ? ` · ${entry.files.length} Dateien` : '';
   return el('li', { class: 'history-row' },
+    historyThumb(entry),
     el('div', { class: 'history-text' },
       el('span', { class: 'job-title', title: entry.title }, entry.title),
       el('span', { class: 'muted' }, `${date} · ${entry.mode === 'audio' ? 'MP3' : 'Video'}${count}`),
@@ -227,7 +239,7 @@ function buildPage(root) {
   );
 
   root.append(
-    el('h1', {}, 'Download'),
+    pageHeader('Download', 'Link einfügen, Qualität wählen, fertig.'),
     el('section', { class: 'card' }, el('div', { class: 'url-row' }, parts.url, parts.load)),
     parts.message,
     parts.result,

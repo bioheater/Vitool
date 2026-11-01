@@ -1,5 +1,5 @@
 // Bereich Schneiden: Datei laden, Abschnitte setzen und exportieren.
-import { el } from '../utils/dom.js';
+import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
@@ -111,7 +111,14 @@ function fullRange(duration, last) {
 function buildPage(root) {
   parts = {
     message: el('p', { class: 'message', role: 'alert', hidden: true }),
-    drop: createFileDrop({ onFile: openFile }),
+    drop: createFileDrop({
+      onFile: openFile,
+      features: [
+        { iconName: 'bolt', title: 'Blitzschnell', text: 'Ohne Neukodierung in Sekunden fertig' },
+        { iconName: 'target', title: 'Auf den Punkt', text: 'Exakt schneiden, wenn es genau sein muss' },
+        { iconName: 'layers', title: 'Mehrere Abschnitte', text: 'Einzeln speichern oder zusammenfügen' },
+      ],
+    }),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
     info: el('p', { class: 'muted' }),
@@ -151,7 +158,7 @@ function buildPage(root) {
     ),
   );
 
-  root.append(el('h1', {}, 'Schneiden'), parts.message, parts.drop, parts.workspace);
+  root.append(pageHeader('Schneiden', 'Nur die besten Stellen behalten.'), parts.message, parts.drop, parts.workspace);
   setMode('fast');
   document.addEventListener('keydown', onKeyDown);
 }

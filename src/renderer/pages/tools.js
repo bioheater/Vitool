@@ -1,5 +1,5 @@
 // Bereich Werkzeuge: GIF, Audio extrahieren, Standbild und Untertitel einbrennen.
-import { el } from '../utils/dom.js';
+import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
@@ -203,7 +203,14 @@ function buildPage(root) {
 
   parts = {
     message: el('p', { class: 'message', role: 'alert', hidden: true }),
-    drop: createFileDrop({ onFile: openFile }),
+    drop: createFileDrop({
+      onFile: openFile,
+      features: [
+        { iconName: 'image', title: 'GIF und Standbild', text: 'Beste Momente als Bild oder Animation' },
+        { iconName: 'music', title: 'Audio extrahieren', text: 'Tonspur als MP3, WAV oder im Original' },
+        { iconName: 'text', title: 'Untertitel einbrennen', text: 'SRT, ASS oder VTT fest ins Bild schreiben' },
+      ],
+    }),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
     info: el('p', { class: 'muted' }),
@@ -307,7 +314,7 @@ function buildPage(root) {
     ),
   );
 
-  root.append(el('h1', {}, 'Werkzeuge'), parts.message, parts.drop, parts.workspace);
+  root.append(pageHeader('Werkzeuge', 'Kleine Helfer für alles rund um deine Videos.'), parts.message, parts.drop, parts.workspace);
 }
 
 export default {
