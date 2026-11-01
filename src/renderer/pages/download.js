@@ -15,6 +15,8 @@ const state = {
 
 let parts = {};
 let editor = null;
+let stream = null;
+let previewStarted = false;
 
 function setMessage(text) {
   parts.message.textContent = text;
@@ -59,8 +61,7 @@ function showInfo(info) {
   parts.sectionToggle.checked = false;
   parts.sectionRow.hidden = !info.duration;
   parts.sections.hidden = true;
-  parts.video.removeAttribute('src');
-  parts.video.load();
+  stopPreview();
   if (info.duration) editor.load(info.duration);
 
   parts.result.hidden = false;
@@ -82,6 +83,42 @@ function nextRange(duration, last) {
   return { start, end };
 }
 
+function showNoPreview() {
+  parts.preview.hidden = true;
+  parts.previewHint.hidden = false;
+}
+
+function stopPreview() {
+  stream?.destroy();
+  stream = null;
+  previewStarted = false;
+  parts.video.removeAttribute('src');
+  parts.video.load();
+}
+
+function startPreview() {
+  const { previewUrl, previewKind } = state.info;
+  parts.preview.hidden = !previewUrl;
+  parts.previewHint.hidden = Boolean(previewUrl);
+  if (!previewUrl || previewStarted) return;
+  previewStarted = true;
+
+  if (previewKind !== 'hls') {
+    parts.video.src = previewUrl;
+    return;
+  }
+  if (!window.Hls?.isSupported()) {
+    showNoPreview();
+    return;
+  }
+  stream = new window.Hls({ enableWorker: false });
+  stream.on(window.Hls.Events.ERROR, (_event, data) => {
+    if (data.fatal) showNoPreview();
+  });
+  stream.loadSource(previewUrl);
+  stream.attachMedia(parts.video);
+}
+
 function enableSections(enabled) {
   state.useSections = enabled;
   parts.sections.hidden = !enabled;
@@ -90,10 +127,7 @@ function enableSections(enabled) {
     return;
   }
   editor.ensureRange();
-  const { previewUrl } = state.info;
-  parts.preview.hidden = !previewUrl;
-  parts.previewHint.hidden = Boolean(previewUrl);
-  if (previewUrl && parts.video.getAttribute('src') !== previewUrl) parts.video.src = previewUrl;
+  startPreview();
   editor.render();
 }
 
@@ -201,9 +235,7 @@ function buildPage(root) {
   editor = new SectionEditor({ video: parts.video, onMessage: setMessage, createRange: nextRange });
 
   parts.video.addEventListener('error', () => {
-    if (!parts.video.getAttribute('src')) return;
-    parts.preview.hidden = true;
-    parts.previewHint.hidden = false;
+    if (parts.video.getAttribute('src')) showNoPreview();
   });
 
   parts.sections.append(

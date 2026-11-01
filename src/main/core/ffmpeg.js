@@ -5,13 +5,13 @@ const { run } = require('./process-runner');
 const { UserError } = require('./error-messages');
 
 // onProgress erhält den Anteil von 0 bis 1, bezogen auf die Länge des Ergebnisses.
-function runFfmpeg(ffmpeg, args, { duration, onProgress, signal, cwd } = {}) {
+function runFfmpeg(ffmpeg, args, { duration, onProgress, signal, cwd, writeInput } = {}) {
   const onLine = (line) => {
     const match = /^out_time_us=(\d+)/.exec(line);
     if (match && duration) onProgress?.(Math.min(Number(match[1]) / 1e6 / duration, 1));
   };
   const fullArgs = ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', '-nostats', ...args];
-  return run(ffmpeg, fullArgs, { onLine, signal, cwd });
+  return run(ffmpeg, fullArgs, { onLine, signal, cwd, writeInput });
 }
 
 async function concatFiles(ffmpeg, files, output, signal) {
@@ -46,6 +46,10 @@ async function probeMedia(ffprobe, filePath) {
     throw new UserError('Diese Datei enthält kein lesbares Video oder Audio.');
   }
 
+  // Handyvideos sind oft gedreht gespeichert, angezeigt wird aber die gedrehte Größe.
+  const rotation = video?.side_data_list?.find((data) => data.rotation !== undefined)?.rotation ?? 0;
+  const sideways = Math.abs(rotation) % 180 === 90;
+
   return {
     path: filePath,
     name: path.basename(filePath),
@@ -53,8 +57,8 @@ async function probeMedia(ffprobe, filePath) {
     hasVideo: Boolean(video),
     hasAudio: Boolean(audio),
     size: Number(format.size),
-    width: video?.width ?? null,
-    height: video?.height ?? null,
+    width: (sideways ? video?.height : video?.width) ?? null,
+    height: (sideways ? video?.width : video?.height) ?? null,
     fps: parseFps(video?.avg_frame_rate),
     videoCodec: video?.codec_name ?? null,
     audioCodec: audio?.codec_name ?? null,

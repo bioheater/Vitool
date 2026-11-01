@@ -17,11 +17,12 @@ export class Timeline {
     this.active = 0;
 
     this.rangeLayer = el('div', { class: 'tl-ranges' });
+    this.markerLayer = el('div', { class: 'tl-markers' });
     this.playhead = el('div', { class: 'tl-playhead' });
     this.startHandle = this.createHandle('start', 'Start des Abschnitts');
     this.endHandle = this.createHandle('end', 'Ende des Abschnitts');
     this.track = el('div', { class: 'tl-track' },
-      this.rangeLayer, this.playhead, this.startHandle, this.endHandle);
+      this.rangeLayer, this.markerLayer, this.playhead, this.startHandle, this.endHandle);
     this.ticks = el('div', { class: 'tl-ticks' });
     root.append(this.track, this.ticks);
 
@@ -30,8 +31,24 @@ export class Timeline {
       if (event.target.dataset.index !== undefined) {
         this.onSelect(Number(event.target.dataset.index));
       }
-      this.onSeek(this.timeAt(event.clientX));
+      this.startScrub(event);
     });
+  }
+
+  // Klicken springt an die Stelle, weiteres Ziehen fährt den Cursor durchs Video.
+  startScrub(event) {
+    event.preventDefault();
+    this.onSeek(this.timeAt(event.clientX));
+
+    const move = (moveEvent) => this.onSeek(this.timeAt(moveEvent.clientX));
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+      window.removeEventListener('pointercancel', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+    window.addEventListener('pointercancel', stop);
   }
 
   createHandle(edge, label) {
@@ -104,6 +121,14 @@ export class Timeline {
       handle.setAttribute('aria-valuenow', String(current[edge]));
       handle.setAttribute('aria-valuetext', formatTime(current[edge], true));
     });
+  }
+
+  setMarkers(times) {
+    this.markerLayer.replaceChildren(...times.map((time) => {
+      const marker = el('span', { class: 'tl-marker' });
+      marker.style.left = `${(time / this.duration) * 100}%`;
+      return marker;
+    }));
   }
 
   setPlayhead(time) {

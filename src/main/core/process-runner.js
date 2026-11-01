@@ -15,7 +15,7 @@ function splitLines(onLine) {
   };
 }
 
-function run(command, args, { onLine, signal, env, cwd } = {}) {
+function run(command, args, { onLine, signal, env, cwd, writeInput } = {}) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new CanceledError());
@@ -27,6 +27,10 @@ function run(command, args, { onLine, signal, env, cwd } = {}) {
       cwd,
       env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', ...env },
     });
+
+    // Endet das Programm früher, darf das Schreiben keinen Absturz auslösen.
+    child.stdin.on('error', () => {});
+    writeInput?.(child.stdin);
 
     let stdout = '';
     let stderr = '';

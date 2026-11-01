@@ -11,5 +11,8 @@
   },
   "devDependencies": {
     "electron": "^45.2.1"
+  },
+  "dependencies": {
+    "hls.js": "^1.7.4"
   }
 }

@@ -95,11 +95,6 @@ function onKeyDown(event) {
   const key = event.key.toLowerCase();
   if (key === 'i') editor.setEdge('start', video.currentTime);
   else if (key === 'o') editor.setEdge('end', video.currentTime);
-  else if (key === ' ' && !event.target.closest('button, video')) {
-    event.preventDefault();
-    if (video.paused) video.play();
-    else video.pause();
-  }
 }
 
 function fullRange(duration, last) {
@@ -142,7 +137,7 @@ function buildPage(root) {
       el('div', { class: 'marker-row' },
         el('button', { class: 'button', onclick: () => editor.setEdge('start', video.currentTime) }, 'Start hier setzen'),
         el('button', { class: 'button', onclick: () => editor.setEdge('end', video.currentTime) }, 'Ende hier setzen'),
-        el('span', { class: 'muted' }, 'Tasten: I = Start, O = Ende, Leertaste = Abspielen'),
+        el('span', { class: 'muted' }, 'Tasten: I = Start, O = Ende, Leertaste = Abspielen, ← → = Einzelbild'),
       ),
       editor.root,
     ),

@@ -2,9 +2,11 @@
 import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
+import { CensorEditor } from '../components/censor-editor.js';
 import { createFileDrop } from '../components/file-drop.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { SectionEditor } from '../components/section-editor.js';
+import { frameButtons } from '../components/video-controls.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
@@ -16,6 +18,7 @@ const TOOLS = [
   { id: 'audio', label: 'Audio extrahieren', action: 'Audio extrahieren', needsAudio: true },
   { id: 'frame', label: 'Standbild', action: 'Bild speichern', needsVideo: true },
   { id: 'subtitle', label: 'Untertitel einbrennen', action: 'Untertitel einbrennen', needsVideo: true },
+  { id: 'censor', label: 'Zensieren', action: 'Zensiert exportieren', needsVideo: true },
 ];
 
 const state = {
@@ -29,6 +32,7 @@ const state = {
 let parts = {};
 let player = null;
 let editor = null;
+let censor = null;
 
 function setMessage(text) {
   parts.message.textContent = text;
@@ -52,9 +56,10 @@ function selectTool(id) {
     panel.hidden = panelId !== id;
   });
 
-  const showsPicture = id === 'gif' || id === 'frame';
+  const showsPicture = id === 'gif' || id === 'frame' || id === 'censor';
   parts.playerCard.hidden = !showsPicture;
   if (!showsPicture) player.video.pause();
+  censor.setActive(id === 'censor');
   editor.root.hidden = id !== 'gif';
   editor.loopEnabled = id === 'gif';
   parts.frameControls.hidden = id !== 'frame';
@@ -76,7 +81,12 @@ function renderSubtitle() {
   parts.subtitleDrop.hidden = Boolean(subtitlePath);
   parts.subtitleChosen.hidden = !subtitlePath;
   parts.subtitleName.textContent = subtitlePath ? subtitlePath.slice(folderOf(subtitlePath).length + 1) : '';
-  parts.start.disabled = state.tool === 'subtitle' && !subtitlePath;
+  updateStart();
+}
+
+function updateStart() {
+  parts.start.disabled = (state.tool === 'subtitle' && !state.subtitlePath)
+    || (state.tool === 'censor' && censor.fields.length === 0);
 }
 
 async function openFile(filePath) {
@@ -110,6 +120,7 @@ async function openFile(filePath) {
   editor.load(media.duration);
   editor.ensureRange();
   editor.render();
+  censor.load(media);
 
   parts.drop.hidden = true;
   parts.workspace.hidden = false;
@@ -152,14 +163,10 @@ function toolOptions() {
 }
 
 async function runTool() {
-  const response = await invoke('tools:start', toolOptions());
+  const response = state.tool === 'censor'
+    ? await invoke('censor:start', { filePath: state.media.path, fields: censor.fields, folder: state.folder })
+    : await invoke('tools:start', toolOptions());
   setMessage(response.ok ? '' : response.error);
-}
-
-function stepFrame(direction) {
-  const { video } = player;
-  video.pause();
-  video.currentTime = Math.max(0, video.currentTime + direction / (state.media.fps || 30));
 }
 
 function choiceGroup(label, choices, current, onSelect) {
@@ -197,6 +204,7 @@ function buildPage(root) {
     createRange: firstSeconds,
     single: true,
   });
+  censor = new CensorEditor({ player, onChange: () => updateStart() });
   editor.root.addEventListener('input', updateGifHint);
   editor.root.addEventListener('pointerup', updateGifHint);
   editor.root.addEventListener('change', updateGifHint);
@@ -206,9 +214,9 @@ function buildPage(root) {
     drop: createFileDrop({
       onFile: openFile,
       features: [
+        { iconName: 'target', title: 'Zensieren', text: 'Stellen mit Keyframes verdecken' },
         { iconName: 'image', title: 'GIF und Standbild', text: 'Beste Momente als Bild oder Animation' },
         { iconName: 'music', title: 'Audio extrahieren', text: 'Tonspur als MP3, WAV oder im Original' },
-        { iconName: 'text', title: 'Untertitel einbrennen', text: 'SRT, ASS oder VTT fest ins Bild schreiben' },
       ],
     }),
     workspace: el('div', { class: 'stack', hidden: true }),
@@ -249,8 +257,7 @@ function buildPage(root) {
   };
 
   parts.frameControls.append(
-    el('button', { class: 'button', onclick: () => stepFrame(-1) }, 'Ein Bild zurück'),
-    el('button', { class: 'button', onclick: () => stepFrame(1) }, 'Ein Bild vor'),
+    ...frameButtons(player.video),
     choiceGroup('Bildformat', [{ value: 'png', text: 'PNG' }, { value: 'jpg', text: 'JPG' }], state.frameFormat, (value) => {
       state.frameFormat = value;
     }),
@@ -287,6 +294,7 @@ function buildPage(root) {
         state.audioFormat = value;
       }),
       el('p', { class: 'muted' }, 'Original übernimmt die Tonspur unverändert und ohne Qualitätsverlust.'))],
+    ['censor', censor.root],
     ['frame', el('section', { class: 'card' },
       el('p', { class: 'muted' }, 'Gespeichert wird das Bild an der aktuellen Stelle des Players. Mit den Knöpfen gehst du bildgenau vor und zurück.'))],
     ['subtitle', el('section', { class: 'card stack' },

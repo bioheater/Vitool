@@ -19,6 +19,7 @@ export class MediaPlayer {
 
   load(media) {
     this.media = media;
+    this.video.dataset.fps = media.fps ?? '';
     this.previewRequested = false;
     this.hint.hidden = true;
     this.video.hidden = false;

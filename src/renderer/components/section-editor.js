@@ -2,6 +2,7 @@
 import { el } from '../utils/dom.js';
 import { formatTime, parseTime } from '../utils/time.js';
 import { Timeline } from './timeline.js';
+import { frameButtons } from './video-controls.js';
 
 export class SectionEditor {
   constructor({ video, onMessage, createRange, single = false }) {
@@ -34,6 +35,7 @@ export class SectionEditor {
     this.mergeSeparate.name = this.mergeTogether.name = `merge-${Math.random()}`;
 
     this.root = el('div', { class: 'stack' },
+      el('div', { class: 'marker-row' }, ...frameButtons(video)),
       timelineRoot,
       this.list,
       single ? null : el('div', {}, el('button', { class: 'button', onclick: () => this.add() }, 'Abschnitt hinzufügen')),

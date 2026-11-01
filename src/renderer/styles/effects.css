@@ -249,7 +249,7 @@ body {
   background: linear-gradient(100deg, rgba(61, 220, 151, 0.26), rgba(139, 108, 255, 0.22));
 }
 
-/* Große Startfläche mit laufendem Farbrand */
+/* Große Startfläche mit sanftem Glow beim Überfahren */
 .drop-hero {
   display: grid;
   gap: 14px;
@@ -257,57 +257,19 @@ body {
 
 .dropzone {
   background: var(--surface);
-  border: 0;
-  overflow: hidden;
-  position: relative;
-  transition: transform 0.2s;
-  z-index: 0;
+  border: 1px solid var(--border);
+  transition: border-color 0.25s, box-shadow 0.25s;
 }
 
 .dropzone:not(.compact) {
   min-height: 250px;
 }
 
-.dropzone::before {
-  animation: spin 7s linear infinite;
-  background: conic-gradient(from 0deg, transparent 0 55%, var(--accent) 70%, var(--accent-2) 82%, var(--accent-3) 94%, transparent);
-  content: '';
-  height: 220%;
-  left: -60%;
-  opacity: 0.75;
-  position: absolute;
-  top: -60%;
-  width: 220%;
-  z-index: -2;
-}
-
-.dropzone::after {
-  background: #141822;
-  border-radius: calc(var(--radius) - 2px);
-  content: '';
-  inset: 2px;
-  position: absolute;
-  z-index: -1;
-}
-
 .dropzone:hover,
 .dropzone.over {
   background: var(--surface);
-  transform: translateY(-2px);
-}
-
-.dropzone:hover::before,
-.dropzone.over::before {
-  animation-duration: 2.4s;
-  opacity: 1;
-}
-
-.dropzone.over::after {
-  background: #1b2231;
-}
-
-.dropzone.compact::before {
-  opacity: 0.25;
+  border-color: rgba(47, 198, 232, 0.55);
+  box-shadow: 0 0 26px rgba(47, 198, 232, 0.2);
 }
 
 .dropzone strong {
@@ -320,7 +282,6 @@ body {
 
 .drop-icon {
   align-items: center;
-  animation: float 3.2s ease-in-out infinite;
   background: linear-gradient(135deg, rgba(61, 220, 151, 0.2), rgba(139, 108, 255, 0.24));
   border-radius: 18px;
   color: var(--accent);
@@ -334,18 +295,6 @@ body {
 .drop-icon svg {
   height: 30px;
   width: 30px;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes float {
-  50% {
-    transform: translateY(-7px);
-  }
 }
 
 .feature-grid {
@@ -459,6 +408,110 @@ body {
 
 .history-row {
   margin-left: 0;
+}
+
+/* Zensieren */
+.censor-layer {
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  position: absolute;
+}
+
+.censor-field {
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  cursor: move;
+  pointer-events: auto;
+  position: absolute;
+  touch-action: none;
+}
+
+.censor-field.active {
+  border: 2px solid var(--accent-2);
+  box-shadow: 0 0 14px rgba(47, 198, 232, 0.45);
+}
+
+.censor-field.ellipse {
+  border-radius: 50%;
+}
+
+.censor-field.black {
+  background: #000;
+}
+
+.censor-mosaic {
+  border-radius: inherit;
+  height: 100%;
+  image-rendering: pixelated;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  width: 100%;
+}
+
+.censor-handle {
+  background: var(--accent-2);
+  border: 2px solid #071018;
+  border-radius: 50%;
+  height: 14px;
+  position: absolute;
+  width: 14px;
+}
+
+.censor-handle.nw {
+  cursor: nwse-resize;
+  left: -7px;
+  top: -7px;
+}
+
+.censor-handle.ne {
+  cursor: nesw-resize;
+  right: -7px;
+  top: -7px;
+}
+
+.censor-handle.sw {
+  bottom: -7px;
+  cursor: nesw-resize;
+  left: -7px;
+}
+
+.censor-handle.se {
+  bottom: -7px;
+  cursor: nwse-resize;
+  right: -7px;
+}
+
+.tl-playhead::before {
+  background: var(--text);
+  border-radius: 50%;
+  content: '';
+  height: 10px;
+  left: -4px;
+  position: absolute;
+  top: -5px;
+  width: 10px;
+}
+
+.tl-markers {
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.tl-marker {
+  background: #fff;
+  box-shadow: 0 0 6px rgba(47, 198, 232, 0.9);
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  position: absolute;
+  top: 50%;
+  transform: rotate(45deg);
+  width: 10px;
+}
+
+.censor-tabs {
+  flex-wrap: wrap;
 }
 
 /* MKV-Spuren */

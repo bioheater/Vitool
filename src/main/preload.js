@@ -27,6 +27,7 @@ const INVOKE_CHANNELS = [
   'mkv:read',
   'mkv:save',
   'mkv:extract',
+  'censor:start',
 ];
 
 const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'app:openInCut'];

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' https: data:; media-src 'self' file: https: blob:; style-src 'self'; script-src 'self'"
+      content="default-src 'self'; connect-src 'self' http: https:; img-src 'self' https: data:; media-src 'self' file: https: blob:; style-src 'self'; script-src 'self'"
     />
     <title>Vitool</title>
     <link rel="stylesheet" href="styles/theme.css" />
@@ -36,6 +36,7 @@
       <section id="queue" class="queue" aria-label="Warteschlange"></section>
     </div>
     <div id="tools-dialog"></div>
+    <script src="../../node_modules/hls.js/dist/hls.light.min.js"></script>
     <script type="module" src="app.js"></script>
   </body>
 </html>

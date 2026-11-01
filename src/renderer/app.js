@@ -6,6 +6,7 @@ import toolsPage from './pages/tools.js';
 import mkvPage from './pages/mkv.js';
 import { mountQueuePanel } from './components/queue-panel.js';
 import { checkTools } from './components/tools-dialog.js';
+import { installVideoKeys } from './components/video-controls.js';
 import { icon } from './utils/dom.js';
 import { ICONS } from './utils/icons.js';
 
@@ -49,6 +50,7 @@ window.vitool.on('app:openInCut', (filePath) => showPage('cut', { filePath }));
 document.addEventListener('dragover', (event) => event.preventDefault());
 document.addEventListener('drop', (event) => event.preventDefault());
 
+installVideoKeys();
 mountQueuePanel(document.getElementById('queue'));
 showPage('download');
 checkTools(document.getElementById('tools-dialog'));

@@ -3,6 +3,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { randomUUID } = require('crypto');
+const { session } = require('electron');
 const { run } = require('../core/process-runner');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { concatFiles } = require('../core/ffmpeg');
@@ -27,12 +28,18 @@ function commonArgs(tools) {
   return args;
 }
 
-function pickPreviewUrl(formats) {
-  const playable = formats
-    .filter((format) => format.vcodec !== 'none' && format.acodec !== 'none' && format.vcodec && format.acodec)
-    .filter((format) => format.ext === 'mp4' && /^https?$/.test(format.protocol ?? ''))
+// Bevorzugt eine direkte MP4-Datei. Viele Seiten liefern aber nur Streams aus Einzelstücken (HLS).
+function pickPreview(formats) {
+  const withPicture = formats
+    .filter((format) => format.vcodec !== 'none' && format.acodec !== 'none')
     .sort((a, b) => (a.height ?? 0) - (b.height ?? 0));
-  return (playable.find((format) => (format.height ?? 0) >= 360) ?? playable.at(-1))?.url ?? null;
+  const smallest = (list) => list.find((format) => (format.height ?? 0) >= 360) ?? list.at(-1);
+
+  const file = smallest(withPicture.filter((format) => format.ext === 'mp4' && /^https?$/.test(format.protocol ?? '')));
+  if (file) return { url: file.url, kind: 'file', headers: file.http_headers };
+
+  const stream = smallest(withPicture.filter((format) => (format.protocol ?? '').startsWith('m3u8')));
+  return stream ? { url: stream.url, kind: 'hls', headers: stream.http_headers } : null;
 }
 
 function normalizeInfo(raw, url) {
@@ -44,6 +51,8 @@ function normalizeInfo(raw, url) {
     formats.filter((format) => format.vcodec !== 'none' && format.height).map((format) => format.height),
   )].sort((a, b) => b - a);
 
+  const preview = pickPreview(formats);
+
   return {
     url: info.webpage_url ?? url,
     title: info.title ?? 'Video',
@@ -52,7 +61,9 @@ function normalizeInfo(raw, url) {
     thumbnail: info.thumbnail ?? null,
     isLive: Boolean(info.is_live),
     heights,
-    previewUrl: pickPreviewUrl(formats),
+    previewUrl: preview?.url ?? null,
+    previewKind: preview?.kind ?? null,
+    previewHeaders: preview?.headers ?? null,
   };
 }
 
@@ -116,7 +127,46 @@ function mergedName(files) {
   return `${name.replace(/ \[[\d.]+-[\d.]+\]$/, '')} (zusammengefügt)${ext}`;
 }
 
+// Manche Seiten liefern Vorschau und Bild nur mit passender Herkunftsangabe aus.
+function installPreviewHeaders() {
+  const urls = ['http://*/*', 'https://*/*'];
+  const streamTypes = ['xhr', 'fetch', 'media'];
+  let current = null;
+
+  const applies = ({ resourceType, url }) => current
+    && (streamTypes.includes(resourceType) || (resourceType === 'image' && url === current.thumbnail));
+
+  session.defaultSession.webRequest.onBeforeSendHeaders({ urls }, (details, callback) => {
+    const headers = { ...details.requestHeaders };
+    if (applies(details)) {
+      headers.Referer = current.referer;
+      if (current.userAgent) headers['User-Agent'] = current.userAgent;
+    }
+    callback({ requestHeaders: headers });
+  });
+
+  // Der Stream-Player lädt die Stücke per Skript, dafür muss die Antwort das erlauben.
+  session.defaultSession.webRequest.onHeadersReceived({ urls }, (details, callback) => {
+    if (!current || !['xhr', 'fetch'].includes(details.resourceType)) {
+      callback({});
+      return;
+    }
+    const headers = Object.fromEntries(Object.entries(details.responseHeaders)
+      .filter(([name]) => !name.toLowerCase().startsWith('access-control-allow-')));
+    callback({ responseHeaders: { ...headers, 'Access-Control-Allow-Origin': ['*'] } });
+  });
+
+  return (info) => {
+    current = {
+      referer: info.url,
+      userAgent: info.previewHeaders?.['User-Agent'] ?? null,
+      thumbnail: info.thumbnail,
+    };
+  };
+}
+
 function register({ ipcMain, queue, store, tools, send }) {
+  const setPreviewSource = installPreviewHeaders();
   const getHistory = () => store.get('history');
 
   function addHistory(entry) {
@@ -214,7 +264,9 @@ function register({ ipcMain, queue, store, tools, send }) {
       if (!/^https?:\/\//i.test(url ?? '')) throw new UserError('Bitte gib einen gültigen Link ein.');
       const args = [...commonArgs(tools), '-J', '--no-warnings', '--playlist-items', '1', '--', url];
       const { stdout } = await run(tools.path('ytdlp'), args);
-      return { ok: true, info: normalizeInfo(JSON.parse(stdout), url) };
+      const info = normalizeInfo(JSON.parse(stdout), url);
+      setPreviewSource(info);
+      return { ok: true, info };
     } catch (error) {
       return { ok: false, error: toGermanMessage(error) };
     }

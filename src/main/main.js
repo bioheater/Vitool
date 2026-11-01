@@ -14,6 +14,7 @@ const features = [
   require('./features/convert'),
   require('./features/tools'),
   require('./features/mkv'),
+  require('./features/censor'),
 ];
 
 let win = null;
