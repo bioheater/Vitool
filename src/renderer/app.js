@@ -4,6 +4,7 @@ import cutPage from './pages/cut.js';
 import convertPage from './pages/convert.js';
 import toolsPage from './pages/tools.js';
 import mkvPage from './pages/mkv.js';
+import aiPage from './pages/ai.js';
 import { mountQueuePanel } from './components/queue-panel.js';
 import { checkTools } from './components/tools-dialog.js';
 import { installVideoKeys } from './components/video-controls.js';
@@ -11,7 +12,7 @@ import { icon } from './utils/dom.js';
 import { ICONS } from './utils/icons.js';
 
 // Neue Bereiche: Seite anlegen und hier eintragen.
-const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage];
+const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage, aiPage];
 
 const nav = document.getElementById('nav');
 const pageRoot = document.getElementById('page');

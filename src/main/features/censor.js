@@ -162,4 +162,4 @@ function register({ ipcMain, queue, tools }) {
   });
 }
 
-module.exports = { register, boxAt };
+module.exports = { register, boxAt, effectFilter, even };

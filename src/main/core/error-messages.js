@@ -19,6 +19,7 @@ const RULES = [
   [/getaddrinfo|timed out|connection (reset|refused|aborted)|network is unreachable|unable to download webpage/i, 'Keine Verbindung möglich. Prüfe bitte deine Internetverbindung.'],
   [/ffmpeg.*not (found|installed)|ffprobe.*not found/i, 'FFmpeg wurde nicht gefunden. Installiere es bitte und starte Vitool neu.'],
   [/invalid data found|moov atom not found|could not find codec parameters/i, 'Diese Datei lässt sich nicht lesen. Sie ist vielleicht beschädigt oder kein Video.'],
+  [/KI-Dienst beendet|No module named|out of memory/i, 'Die KI konnte nicht arbeiten. Starte Vitool neu oder installiere das KI-Paket erneut.'],
   [/enoent/i, 'Ein benötigtes Programm wurde nicht gefunden. Starte Vitool neu, damit die Prüfung erneut läuft.'],
 ];
 
@@ -28,7 +29,7 @@ function toGermanMessage(error) {
   const rule = RULES.find(([pattern]) => pattern.test(text));
   if (rule) return rule[1];
   console.error('Unbekannter Fehler:', text);
-  return 'Das hat leider nicht geklappt. Prüfe den Link und versuche es noch einmal.';
+  return 'Das hat leider nicht geklappt. Bitte versuche es noch einmal.';
 }
 
 module.exports = { UserError, toGermanMessage };

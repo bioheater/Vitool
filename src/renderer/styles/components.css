@@ -541,6 +541,12 @@ input[type='radio'] {
   margin-bottom: 5px;
 }
 
+.job-actions {
+  display: inline-flex;
+  min-height: 29px;
+  justify-content: flex-end;
+}
+
 .job-title {
   flex: 1;
   min-width: 0;

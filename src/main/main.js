@@ -15,6 +15,7 @@ const features = [
   require('./features/tools'),
   require('./features/mkv'),
   require('./features/censor'),
+  require('./features/ai'),
 ];
 
 let win = null;
