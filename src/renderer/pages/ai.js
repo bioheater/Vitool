@@ -118,7 +118,7 @@ function renderSetup() {
   const ready = status.installed && hasModel;
 
   parts.setup.hidden = Boolean(state.media);
-  parts.setup.replaceChildren(
+  parts.setup.replaceChildren(...[
     el('section', { class: 'card stack' },
       el('h2', {}, status.installed ? 'KI-Paket' : 'Freiwilliges Zusatzpaket'),
       el('p', { class: 'muted' }, 'KI-Maske nutzt SAM 2.1 von Meta: Du klickst ein Objekt an, die KI erkennt seine Form und verfolgt es durchs Video. Alles läuft nur auf deinem Rechner, es wird kein Video hochgeladen. Vitool funktioniert auch ohne dieses Paket vollständig.'),
@@ -136,7 +136,7 @@ function renderSetup() {
       el('p', { class: 'muted' }, 'Du kannst ein oder mehrere Modelle laden. Größere sind genauer, aber langsamer.'),
       el('div', { class: 'model-grid' }, ...status.models.map(modelCard)),
     ) : null,
-  );
+  ].filter(Boolean));
   parts.drop.hidden = !ready || Boolean(state.media);
 }
 

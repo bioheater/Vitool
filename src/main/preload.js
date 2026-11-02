@@ -42,9 +42,18 @@ const INVOKE_CHANNELS = [
   'ai:reset',
   'ai:track',
   'ai:export',
+  'transcribe:status',
+  'transcribe:install',
+  'transcribe:downloadModel',
+  'transcribe:removeModel',
+  'transcribe:selectModel',
+  'transcribe:uninstall',
+  'transcribe:start',
+  'transcribe:fromLink',
+  'transcribe:export',
 ];
 
-const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'app:openInCut', 'ai:statusChanged'];
+const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged'];
 
 contextBridge.exposeInMainWorld('vitool', {
   invoke(channel, ...args) {

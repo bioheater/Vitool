@@ -22,7 +22,7 @@ function visibleVideo() {
 }
 
 function isTyping(target) {
-  if (target.closest('select, textarea')) return true;
+  if (target.closest('select, textarea') || target.isContentEditable) return true;
   return target.tagName === 'INPUT' && !['range', 'radio', 'checkbox'].includes(target.type);
 }
 

@@ -4,14 +4,14 @@ const fs = require('fs/promises');
 const fsSync = require('fs');
 const os = require('os');
 const path = require('path');
-const { execFile, spawn } = require('child_process');
-const { createWriteStream } = require('fs');
+const { spawn } = require('child_process');
 const { pathToFileURL } = require('url');
 const { app } = require('electron');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
+const { exec, findPython, findGpu, folderSizeGb, downloadFile } = require('../core/python-tools');
 const { effectFilter, even } = require('./censor');
 
 const MODEL_BASE = 'https://dl.fbaipublicfiles.com/segment_anything_2/092824';
@@ -28,24 +28,6 @@ const MAX_FRAME_HEIGHT = 720;
 const REFERENCE_HEIGHT = 720; // Die Reglerwerte gelten für ein 720p-Bild.
 const EDGE_LIMIT = 20;
 const EDGE_SPREAD = 1.4;
-
-function exec(command, args) {
-  return new Promise((resolve) => {
-    execFile(command, args, { windowsHide: true, timeout: 15000 }, (error, stdout, stderr) => {
-      resolve(error ? null : `${stdout}${stderr}`.trim());
-    });
-  });
-}
-
-async function findPython() {
-  const output = await exec('where.exe', ['python']);
-  const candidates = (output ?? '').split(/\r?\n/).filter((line) => line && !line.includes('WindowsApps'));
-  for (const candidate of candidates) {
-    const match = /Python (\d+)\.(\d+)/.exec((await exec(candidate, ['--version'])) ?? '');
-    if (match && Number(match[1]) === 3 && Number(match[2]) >= 10) return { path: candidate, version: `${match[1]}.${match[2]}` };
-  }
-  return null;
-}
 
 class WorkerClient {
   constructor(pythonPath, script) {
@@ -124,20 +106,6 @@ function register({ ipcMain, queue, store, tools, send }) {
     return model;
   };
 
-  async function folderSizeGb() {
-    let total = 0;
-    const walk = async (dir) => {
-      const entries = await fs.readdir(dir, { withFileTypes: true }).catch(() => []);
-      for (const entry of entries) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) await walk(full);
-        else total += (await fs.stat(full).catch(() => ({ size: 0 }))).size;
-      }
-    };
-    await walk(root);
-    return total / 1024 ** 3;
-  }
-
   // Python, Grafikkarte und Ordnergröße brauchen Sekunden. Sie werden im Hintergrund ermittelt,
   // damit die Seite sofort erscheint, und danach als Ergänzung nachgeschickt.
   const slowInfo = { checked: false, python: null, gpu: null, usedGb: null };
@@ -147,13 +115,13 @@ function register({ ipcMain, queue, store, tools, send }) {
     slowCheck ??= (async () => {
       const [python, gpu, usedGb] = await Promise.all([
         findPython(),
-        exec('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader']),
-        fsSync.existsSync(markerFile) ? folderSizeGb() : 0,
+        findGpu(),
+        fsSync.existsSync(markerFile) ? folderSizeGb(root) : 0,
       ]);
       Object.assign(slowInfo, {
         checked: true,
         python,
-        gpu: gpu?.split(/\r?\n/)[0] ?? null,
+        gpu,
         usedGb: Number(usedGb.toFixed(1)),
       });
       slowCheck = null;
@@ -205,37 +173,14 @@ function register({ ipcMain, queue, store, tools, send }) {
 
   async function runDownload(model, job) {
     await fs.mkdir(modelDir, { recursive: true });
-    const partPath = `${modelPath(model)}.part`;
-    let response;
-    try {
-      response = await fetch(`${MODEL_BASE}/${model.file}`, { signal: job.signal });
-    } catch (error) {
-      if (job.signal.aborted) throw new CanceledError();
-      throw error;
-    }
-    if (!response.ok) throw new Error(`Modell-Download fehlgeschlagen: ${response.status}`);
-
-    const total = Number(response.headers.get('content-length'));
-    const file = createWriteStream(partPath);
     let loaded = 0;
-    try {
-      for await (const chunk of response.body) {
-        loaded += chunk.length;
-        if (!file.write(chunk)) await new Promise((resolve) => { file.once('drain', resolve); });
+    await downloadFile(`${MODEL_BASE}/${model.file}`, modelPath(model), {
+      signal: job.signal,
+      onProgress: (bytes, total) => {
+        loaded += bytes;
         job.update({ progress: total ? (loaded / total) * 100 : null, detail: `Lädt Modell ${model.label}` });
-      }
-      await new Promise((resolve, reject) => { file.end((error) => (error ? reject(error) : resolve())); });
-    } catch (error) {
-      file.destroy();
-      await fs.rm(partPath, { force: true });
-      if (job.signal.aborted) throw new CanceledError();
-      throw error;
-    }
-    if (total && loaded !== total) {
-      await fs.rm(partPath, { force: true });
-      throw new UserError('Der Download war unvollständig. Bitte versuche es noch einmal.');
-    }
-    await fs.rename(partPath, modelPath(model));
+      },
+    });
   }
 
   function stopWorker() {

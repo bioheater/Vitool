@@ -293,4 +293,4 @@ function register({ ipcMain, queue, store, tools, send }) {
   });
 }
 
-module.exports = { register, buildArgs, normalizeInfo };
+module.exports = { register, buildArgs, normalizeInfo, commonArgs };

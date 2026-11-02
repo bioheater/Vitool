@@ -8,7 +8,7 @@ const { ToolChecker } = require('./core/tools-check');
 const { listMediaFiles } = require('./core/files');
 
 const VIDEO_FILTERS = [
-  { name: 'Videos und Audio', extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'mp3', 'm4a', 'wav'] },
+  { name: 'Videos und Audio', extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'mp3', 'm4a', 'wav', 'flac', 'ogg', 'opus', 'aac'] },
   { name: 'Alle Dateien', extensions: ['*'] },
 ];
 
@@ -22,6 +22,7 @@ const features = [
   require('./features/mkv'),
   require('./features/censor'),
   require('./features/ai'),
+  require('./features/transcribe'),
 ];
 
 let win = null;
