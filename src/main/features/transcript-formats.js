@@ -42,28 +42,36 @@ function estimatedWords(segment) {
   });
 }
 
-// Wörter sammeln, bis Länge oder Dauer erreicht sind, gern nach einem Satzzeichen.
+// Wörter sammeln, bis Länge, Wortzahl oder Dauer erreicht sind, gern nach einem Satzzeichen.
 // Whisper trennt manchmal mitten im Satz; die Untertitel laufen darüber hinweg, nur echte Pausen trennen.
-function buildCues(segments) {
+function buildCues(segments, {
+  maxChars = MAX_CUE_CHARS,
+  maxWords = Infinity,
+  maxSeconds = MAX_CUE_SECONDS,
+  softBreak = SOFT_BREAK_CHARS,
+} = {}) {
   const words = segments
     .filter((segment) => segment.text.trim())
-    .flatMap((segment) => (!segment.edited && segment.words?.length ? segment.words : estimatedWords(segment)));
+    .flatMap((segment) => (!segment.edited && segment.words?.length ? segment.words : estimatedWords(segment)))
+    .filter((word) => word.word.trim());
   const cues = [];
   let current = [];
   const textOf = (list) => list.map((entry) => entry.word).join('').trim();
   const flush = () => {
     if (current.length === 0) return;
-    cues.push({ start: current[0].start, end: current.at(-1).end, text: textOf(current) });
+    cues.push({ start: current[0].start, end: current.at(-1).end, text: textOf(current), words: current });
     current = [];
   };
   words.forEach((word) => {
     if (current.length > 0) {
-      const tooLong = textOf([...current, word]).length > MAX_CUE_CHARS || word.end - current[0].start > MAX_CUE_SECONDS;
+      const tooLong = textOf([...current, word]).length > maxChars
+        || current.length >= maxWords
+        || word.end - current[0].start > maxSeconds;
       if (tooLong || word.start - current.at(-1).end > PAUSE_SECONDS) flush();
     }
     current.push(word);
     const last = word.word.trim();
-    if (/[.!?…]$/.test(last) || (textOf(current).length > SOFT_BREAK_CHARS && /[,;:]$/.test(last))) flush();
+    if (/[.!?…]$/.test(last) || (textOf(current).length > softBreak && /[,;:]$/.test(last))) flush();
   });
   flush();
   return cues.filter((cue) => cue.text);
@@ -116,4 +124,4 @@ const FORMATS = {
   json: { label: 'JSON', ext: 'json', build: toJson },
 };
 
-module.exports = { FORMATS };
+module.exports = { FORMATS, buildCues };

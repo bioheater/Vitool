@@ -41,7 +41,9 @@ export class CensorEditor {
     this.layer = el('div', { class: 'censor-layer', hidden: true });
     player.root.append(this.layer);
 
+    // Die Seite darf die Zeitleiste direkt unter das Video setzen.
     const timelineRoot = el('div', { class: 'timeline' });
+    this.timelineRoot = timelineRoot;
     this.timeline = new Timeline(timelineRoot, {
       onChange: (_index, range, edge) => {
         Object.assign(this.current(), range);

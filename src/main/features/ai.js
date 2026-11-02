@@ -11,7 +11,7 @@ const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
-const { exec, findPython, findGpu, folderSizeGb, downloadFile } = require('../core/python-tools');
+const { exec, findPython, findGpu, folderSizeGb, downloadFile, pythonScript } = require('../core/python-tools');
 const { effectFilter, even } = require('./censor');
 
 const MODEL_BASE = 'https://dl.fbaipublicfiles.com/segment_anything_2/092824';
@@ -190,7 +190,7 @@ function register({ ipcMain, queue, store, tools, send }) {
 
   async function getWorker() {
     if (worker && !worker.closed) return worker;
-    const script = path.join(__dirname, '..', '..', 'python', 'sam2_worker.py');
+    const script = pythonScript('sam2_worker.py');
     worker = new WorkerClient(envPython, script);
     await worker.ready;
     return worker;

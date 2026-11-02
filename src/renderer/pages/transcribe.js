@@ -33,21 +33,39 @@ const EXPORTS = [
   { format: 'json', text: 'JSON', hint: 'Mit Wortzeiten, zum Weiterverarbeiten' },
 ];
 
+const STYLE_CHOICES = [
+  { value: 'classic', text: 'Klassisch' },
+  { value: 'box', text: 'Box' },
+  { value: 'highlight', text: 'Wort für Wort' },
+  { value: 'pop', text: 'Pop' },
+];
+const ACCENTS = [
+  ['#FFD400', 'Gelb'],
+  ['#3DDC97', 'Grün'],
+  ['#2FC6E8', 'Türkis'],
+  ['#FF4FA3', 'Pink'],
+  ['#FF7A1A', 'Orange'],
+];
+
 const state = {
   status: null,
   media: null,
   transcript: null,
   running: false,
   wasRunning: false,
+  burn: { style: 'highlight', position: 'bottom', size: 'medium', color: '#FFD400', preview: true },
 };
 let parts = {};
 let player = null;
 let stream = null;
 let rows = [];
+const search = { hits: [], position: -1 };
+const overlay = { cues: null, look: null, video: null, cue: null, words: [], watching: false };
 
 function setMessage(text) {
   parts.message.textContent = text;
   parts.message.hidden = !text;
+  parts.notice.hidden = true;
 }
 
 async function act(channel, ...args) {
@@ -103,7 +121,7 @@ function renderSetup() {
   const { status } = state;
   const ready = status.installed && status.models.some((model) => model.downloaded);
   // Bei einem Link gibt es während des Ladens noch keine Datei, die Arbeitsfläche ist trotzdem offen.
-  const open = Boolean(state.media || state.link);
+  const open = Boolean(state.media || state.link || state.batch);
 
   parts.setup.hidden = open;
   parts.setup.replaceChildren(...[
@@ -127,15 +145,63 @@ function renderSetup() {
   ].filter(Boolean));
   parts.drop.hidden = !ready || open;
   parts.linkCard.hidden = parts.drop.hidden;
+  parts.folderRow.hidden = parts.drop.hidden;
   renderModelSelect();
 }
 
 function renderModelSelect() {
   const downloaded = state.status.models.filter((model) => model.downloaded);
-  parts.model.replaceChildren(...downloaded.map((model) => el('option', {
-    value: model.id,
-    selected: model.id === state.status.selected,
-  }, model.label)));
+  [parts.fields, parts.batchFields].forEach((fields) => {
+    const current = fields.model.value;
+    fields.model.replaceChildren(...downloaded.map((model) => el('option', {
+      value: model.id,
+      selected: current ? model.id === current : model.id === state.status.selected,
+    }, model.label)));
+    updateTranslateHint(fields);
+  });
+}
+
+// Sprache, Modell und Ausgabe gibt es für eine Datei und für den Stapel.
+function settingFields() {
+  const fields = {
+    language: el('select', { class: 'input', 'aria-label': 'Sprache' },
+      ...LANGUAGES.map(([value, text]) => el('option', { value }, text))),
+    model: el('select', { class: 'input', 'aria-label': 'Sprachmodell', onchange: () => updateTranslateHint(fields) }),
+    output: el('select', { class: 'input', 'aria-label': 'Sprache des Textes', onchange: () => updateTranslateHint(fields) },
+      el('option', { value: 'original' }, 'Gesprochener Sprache'),
+      el('option', { value: 'en' }, 'Englisch (übersetzt)')),
+    translateHint: el('p', { class: 'muted', hidden: true }),
+  };
+  fields.rows = [
+    el('label', { class: 'field' }, el('span', { class: 'muted' }, 'Sprache'), fields.language),
+    el('label', { class: 'field' }, el('span', { class: 'muted' }, 'Modell'), fields.model),
+    el('label', { class: 'field' }, el('span', { class: 'muted' }, 'Text in'), fields.output),
+    fields.translateHint,
+  ];
+  return fields;
+}
+
+const optionsFrom = (fields) => ({
+  language: fields.language.value,
+  model: fields.model.value,
+  translate: fields.output.value === 'en',
+});
+
+// Large Turbo wurde ohne Übersetzungen trainiert und gibt dann oft nur die Originalsprache aus.
+function updateTranslateHint(fields) {
+  const translating = fields.output.value === 'en';
+  const downloaded = state.status?.models.filter((model) => model.downloaded) ?? [];
+  const better = downloaded.filter((model) => ['medium', 'large'].includes(model.id)).map((model) => model.label);
+  let text = '';
+  if (translating && fields.model.value === 'turbo') {
+    text = better.length
+      ? `Large Turbo übersetzt schlecht. Nimm dafür besser ${better.join(' oder ')}.`
+      : 'Large Turbo übersetzt schlecht. Lade dafür besser das Modell Medium oder Large.';
+  } else if (translating) {
+    text = 'Whisper übersetzt aus jeder Sprache ins Englische. Andere Zielsprachen kann es nicht.';
+  }
+  fields.translateHint.textContent = text;
+  fields.translateHint.hidden = !text;
 }
 
 async function refresh() {
@@ -173,6 +239,106 @@ function playLocal(media) {
   player.video.removeAttribute('poster');
   player.load(media);
   player.root.classList.toggle('audio-only', !media.hasVideo);
+}
+
+function openFiles(paths) {
+  if (paths.length === 1) openFile(paths[0]);
+  else if (paths.length > 1) showBatch(paths);
+}
+
+async function pickFolder() {
+  const paths = await invoke('dialog:pickVideoFolder');
+  if (paths.length === 0) return;
+  if (state.batch) addToBatch(paths);
+  else showBatch(paths);
+}
+
+// Stapel: mehrere Dateien mit denselben Einstellungen, Ergebnisse ohne Nachfrage neben den Originalen.
+function showBatch(paths) {
+  setMessage('');
+  state.batch = [];
+  addToBatch(paths);
+  parts.drop.hidden = true;
+  parts.linkCard.hidden = true;
+  parts.folderRow.hidden = true;
+  parts.setup.hidden = true;
+  parts.batch.hidden = false;
+}
+
+function addToBatch(paths) {
+  const known = new Set(state.batch);
+  state.batch.push(...paths.filter((filePath) => !known.has(filePath)));
+  renderBatch();
+}
+
+function renderBatch() {
+  const count = state.batch.length;
+  parts.batchTitle.textContent = `Stapel: ${count} ${count === 1 ? 'Datei' : 'Dateien'}`;
+  parts.batchList.replaceChildren(...state.batch.map((filePath) => el('li', { class: 'batch-item' },
+    el('span', { class: 'batch-name', title: filePath }, filePath.split(/[\\/]/).pop()),
+    el('button', {
+      class: 'object-remove',
+      title: 'Aus dem Stapel nehmen',
+      'aria-label': 'Aus dem Stapel nehmen',
+      onclick: () => {
+        state.batch = state.batch.filter((entry) => entry !== filePath);
+        if (state.batch.length === 0) closeBatch();
+        else renderBatch();
+      },
+    }, '×'))));
+  parts.batchStart.textContent = `Alle transkribieren (${count})`;
+  parts.batchStart.disabled = count === 0 || !parts.formatChecks.some((check) => check.checked);
+}
+
+function closeBatch() {
+  state.batch = null;
+  parts.batch.hidden = true;
+  refresh();
+}
+
+async function startBatch() {
+  setMessage('');
+  const formats = parts.formatChecks.filter((check) => check.checked).map((check) => check.value);
+  const response = await invoke('transcribe:batch', { files: state.batch, formats, ...optionsFrom(parts.batchFields) });
+  if (!response.ok) {
+    setMessage(response.error);
+    return;
+  }
+  closeBatch();
+  setMessage('');
+  parts.notice.textContent = `${response.count} Dateien sind in der Warteschlange und werden nacheinander transkribiert. Die Ergebnisse landen neben den Originaldateien.`;
+  parts.notice.hidden = false;
+}
+
+function buildBatch() {
+  parts.batchTitle = el('h2', {});
+  parts.batchList = el('ul', { class: 'batch-list' });
+  parts.batchStart = el('button', { class: 'button primary', onclick: startBatch });
+  parts.formatChecks = EXPORTS.map(({ format }) => el('input', {
+    type: 'checkbox',
+    value: format,
+    checked: ['srt', 'txt'].includes(format),
+    onchange: renderBatch,
+  }));
+  parts.batch = el('div', { class: 'stack', hidden: true },
+    el('section', { class: 'card stack' },
+      el('div', { class: 'section-head' }, parts.batchTitle,
+        el('button', { class: 'button small', onclick: closeBatch }, 'Abbrechen')),
+      parts.batchList,
+      el('div', { class: 'marker-row' },
+        el('button', { class: 'button small', onclick: async () => addToBatch(await invoke('dialog:pickVideos')) }, 'Dateien hinzufügen'),
+        el('button', { class: 'button small', onclick: pickFolder }, 'Ordner hinzufügen')),
+    ),
+    el('section', { class: 'card stack' },
+      el('h2', {}, 'Einstellungen für alle'),
+      ...parts.batchFields.rows,
+      el('p', { class: 'muted' }, 'Speichern als'),
+      el('div', { class: 'format-checks' }, ...EXPORTS.map(({ text }, index) => el('label', { class: 'check' }, parts.formatChecks[index], el('span', {}, text)))),
+      el('p', { class: 'muted' }, 'Die Dateien landen neben den Originalen, vorhandene werden nicht überschrieben. Die Transkriptionen laufen nacheinander.'),
+      el('div', {}, parts.batchStart),
+    ),
+  );
+  return parts.batch;
 }
 
 function showMedia(media) {
@@ -238,6 +404,10 @@ async function loadLink() {
     setMessage('Livestreams können nicht transkribiert werden.');
     return;
   }
+  if (info.playlist === 'only' && !info.duration) {
+    setMessage('Das ist eine Playlist. Füge bitte den Link zu einem einzelnen Video ein.');
+    return;
+  }
 
   parts.url.value = '';
   state.media = null;
@@ -278,7 +448,7 @@ async function start() {
   parts.start.disabled = true;
   parts.start.textContent = 'Läuft …';
   const filePath = state.media.path;
-  const response = await invoke('transcribe:start', { filePath, language: parts.language.value, model: parts.model.value });
+  const response = await invoke('transcribe:start', { filePath, ...optionsFrom(parts.fields) });
   state.running = false;
   parts.start.disabled = false;
   parts.start.textContent = 'Transkribieren';
@@ -295,7 +465,8 @@ function summary(transcript) {
   const words = transcript.segments.reduce((sum, segment) => sum + segment.text.split(/\s+/).filter(Boolean).length, 0);
   const language = LANGUAGE_NAMES[transcript.language] ?? transcript.language;
   const device = transcript.device === 'cuda' ? 'Grafikkarte' : 'Prozessor';
-  return `${transcript.segments.length} Abschnitte · ${words} Wörter · Sprache: ${language} · erkannt mit ${device}`;
+  const spoken = transcript.translated ? `ins Englische übersetzt (gesprochen: ${language})` : `Sprache: ${language}`;
+  return `${transcript.segments.length} Abschnitte · ${words} Wörter · ${spoken} · erkannt mit ${device}`;
 }
 
 function segmentRow(segment) {
@@ -307,6 +478,11 @@ function segmentRow(segment) {
     oninput: () => {
       segment.text = text.textContent.replace(/\s+/g, ' ').trim();
       segment.edited = true;
+      onTextChanged();
+    },
+    // Ein Satz bleibt eine Zeile, sonst passen Untertitel und Suche nicht mehr.
+    onkeydown: (event) => {
+      if (event.key === 'Enter') event.preventDefault();
     },
   }, segment.text);
   const time = el('button', {
@@ -324,21 +500,69 @@ function renderResult() {
   parts.resultCards.forEach((card) => {
     card.hidden = !transcript;
   });
-  parts.start.textContent = 'Transkribieren';
-  if (!transcript) {
-    rows = [];
-    parts.list.replaceChildren();
-    return;
-  }
-  parts.start.textContent = 'Neu transkribieren';
-  parts.summary.textContent = summary(transcript);
-  if (transcript.segments.length === 0) {
-    rows = [];
+  parts.start.textContent = transcript ? 'Neu transkribieren' : 'Transkribieren';
+  rows = transcript?.segments.map(segmentRow) ?? [];
+  if (transcript) parts.summary.textContent = summary(transcript);
+  if (transcript?.segments.length === 0) {
     parts.list.replaceChildren(el('p', { class: 'muted' }, 'Es wurde keine Sprache erkannt.'));
-    return;
+  } else {
+    parts.list.replaceChildren(...rows);
   }
-  rows = transcript.segments.map(segmentRow);
-  parts.list.replaceChildren(...rows);
+  runSearch();
+  renderBurn();
+}
+
+// Treffer werden über die Highlight-Schnittstelle markiert, der bearbeitbare Text bleibt unverändert.
+function runSearch() {
+  const query = parts.search.value.trim().toLocaleLowerCase('de');
+  search.hits = [];
+  search.position = -1;
+  if (query) {
+    rows.forEach((row, index) => {
+      const field = row.querySelector('.transcript-text');
+      field.normalize();
+      const node = field.firstChild;
+      const text = node?.textContent.toLocaleLowerCase('de') ?? '';
+      for (let at = text.indexOf(query); at >= 0; at = text.indexOf(query, at + query.length)) {
+        const range = new Range();
+        range.setStart(node, at);
+        range.setEnd(node, at + query.length);
+        search.hits.push({ range, index });
+      }
+    });
+  }
+  CSS.highlights.set('transcript-search', new Highlight(...search.hits.map((hit) => hit.range)));
+  CSS.highlights.delete('transcript-current');
+  renderSearchCount();
+}
+
+function renderSearchCount() {
+  const query = parts.search.value.trim();
+  const count = search.hits.length;
+  parts.searchCount.textContent = !query ? '' : count === 0 ? 'Keine Treffer' : `${search.position + 1 || '–'} von ${count}`;
+  parts.searchPrev.disabled = count === 0;
+  parts.searchNext.disabled = count === 0;
+}
+
+function jumpToHit(direction) {
+  const count = search.hits.length;
+  if (count === 0) return;
+  search.position = (search.position + direction + count) % count;
+  const hit = search.hits[search.position];
+  CSS.highlights.set('transcript-current', new Highlight(hit.range));
+  const row = rows[hit.index];
+  parts.list.scrollTo({ top: row.offsetTop - parts.list.clientHeight / 3 });
+  player.video.currentTime = state.transcript.segments[hit.index].start;
+  renderSearchCount();
+}
+
+let searchTimer = null;
+function onTextChanged() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    runSearch();
+    requestCues();
+  }, 250);
 }
 
 // Markiert den Satz, der gerade läuft, und hält ihn beim Abspielen im Blick.
@@ -377,16 +601,203 @@ async function save(format) {
   parts.saved.hidden = false;
 }
 
+function choice(label, choices, current, onSelect) {
+  const buttons = choices.map(({ value, text }) => {
+    const button = el('button', {
+      class: `segment ${value === current ? 'active' : ''}`,
+      'aria-pressed': String(value === current),
+      onclick: () => {
+        buttons.forEach((entry) => {
+          entry.classList.toggle('active', entry === button);
+          entry.setAttribute('aria-pressed', String(entry === button));
+        });
+        onSelect(value);
+      },
+    }, text);
+    return button;
+  });
+  return el('div', { class: 'segments', role: 'group', 'aria-label': label }, ...buttons);
+}
+
+function setBurn(patch) {
+  Object.assign(state.burn, patch);
+  renderBurn();
+}
+
+function renderBurn() {
+  const ready = Boolean(state.transcript?.segments.length);
+  const noPicture = Boolean(state.media && !state.media.fromLink && !state.media.hasVideo);
+  parts.burnCard.hidden = !ready;
+  parts.burnButton.disabled = !ready || noPicture;
+  parts.burnHint.textContent = noPicture
+    ? 'Diese Datei hat kein Bild. Einbrennen geht nur bei Videos.'
+    : state.media?.fromLink
+      ? 'Dafür wird das Video heruntergeladen (höchstens 1080p). Das fertige Video landet in deinem Download-Ordner.'
+      : 'Das fertige Video landet neben dem Original.';
+  parts.styleTiles.forEach((tile) => tile.classList.toggle('active', tile.dataset.style === state.burn.style));
+  parts.swatches.forEach((swatch) => swatch.classList.toggle('active', swatch.dataset.color === state.burn.color));
+  parts.colorRow.hidden = !['highlight', 'pop'].includes(state.burn.style);
+  requestCues();
+}
+
+// Holt dieselben Untertitel, die auch eingebrannt würden, damit die Vorschau genau passt.
+let cueTimer = null;
+function requestCues() {
+  clearTimeout(cueTimer);
+  cueTimer = setTimeout(async () => {
+    const video = { width: player.video.videoWidth, height: player.video.videoHeight };
+    if (!state.transcript?.segments.length || !state.burn.preview || !video.width) {
+      overlay.cues = null;
+      renderOverlay();
+      return;
+    }
+    const response = await invoke('transcribe:cues', { transcript: state.transcript, options: { ...state.burn }, video });
+    if (!response.ok) return;
+    overlay.cues = response.cues;
+    overlay.look = response.look;
+    overlay.video = video;
+    overlay.cue = null;
+    renderOverlay();
+  }, 150);
+}
+
+// Legt die Vorschau genau über die sichtbare Bildfläche, ohne die schwarzen Ränder.
+function placeOverlay() {
+  const { video } = player;
+  const box = video.getBoundingClientRect();
+  const rootBox = player.root.getBoundingClientRect();
+  const ratio = video.videoWidth / video.videoHeight;
+  let width = box.width;
+  let height = box.height;
+  if (width / height > ratio) width = height * ratio;
+  else height = width / ratio;
+  const node = parts.subOverlay;
+  node.style.left = `${box.left - rootBox.left + (box.width - width) / 2}px`;
+  node.style.top = `${box.top - rootBox.top + (box.height - height) / 2}px`;
+  node.style.width = `${width}px`;
+  node.style.height = `${height}px`;
+  return height / overlay.video.height;
+}
+
+function renderOverlay() {
+  const node = parts.subOverlay;
+  const time = player.video.currentTime;
+  const cue = overlay.cues?.find((entry) => time >= entry.start && time < entry.end) ?? null;
+  node.hidden = !cue;
+  if (!cue) {
+    overlay.cue = null;
+    return;
+  }
+
+  const scale = placeOverlay();
+  const { look } = overlay;
+  if (cue !== overlay.cue) {
+    overlay.cue = cue;
+    overlay.words = cue.words.map((word) => el('span', { class: 'sub-word' }, word.text));
+    // Die innere Zeile trägt bei "Box" den Kasten, so bekommt jede Zeile ihren eigenen wie im fertigen Video.
+    const line = el('span', { class: 'sub-line' }, ...overlay.words.flatMap((word, index) => (index ? [' ', word] : [word])));
+    const text = el('span', { class: 'sub-text' }, line);
+    node.className = `sub-overlay pos-${state.burn.position} ${look.box ? 'sub-box' : 'sub-outline'} ${look.upper ? 'sub-upper' : ''} ${look.pop ? 'sub-pop' : ''}`;
+    node.replaceChildren(text);
+  }
+  node.style.setProperty('--sub-font', `'${look.font}'`);
+  node.style.setProperty('--sub-weight', look.bold ? '700' : '400');
+  node.style.setProperty('--sub-size', `${look.fontSize * scale}px`);
+  node.style.setProperty('--sub-outline', `${look.outlineSize * scale}px`);
+  node.style.setProperty('--sub-shadow', `${look.shadowSize * scale}px`);
+  node.style.setProperty('--sub-box', `${look.boxSize * scale}px`);
+  node.style.setProperty('--sub-margin', `${look.margin * scale}px`);
+  node.style.setProperty('--sub-accent', look.color);
+  if (look.highlight) {
+    const active = cue.words.findLastIndex((word) => word.start <= time);
+    overlay.words.forEach((word, index) => word.classList.toggle('active', index === Math.max(0, active)));
+  }
+}
+
+function watchOverlay() {
+  if (overlay.watching) return;
+  overlay.watching = true;
+  const step = () => {
+    renderOverlay();
+    if (player.video.paused) {
+      overlay.watching = false;
+      return;
+    }
+    requestAnimationFrame(step);
+  };
+  step();
+}
+
+async function burn() {
+  setMessage('');
+  const name = state.link?.title ?? state.media.name.replace(/\.[^.]+$/, '');
+  const response = await invoke('transcribe:burn', {
+    ...state.burn,
+    transcript: state.transcript,
+    filePath: state.media.path,
+    linkUrl: state.media.fromLink ?? null,
+    name,
+  });
+  if (!response.ok) {
+    setMessage(response.error);
+    return;
+  }
+  parts.burnHint.textContent = 'Läuft in der Warteschlange. Dort findest du danach auch „Im Ordner zeigen“.';
+}
+
+function buildBurnCard() {
+  parts.styleTiles = STYLE_CHOICES.map(({ value, text }) => el('button', {
+    class: 'style-tile',
+    'data-style': value,
+    onclick: () => setBurn({ style: value }),
+  }, el('span', { class: `style-sample sample-${value}` }, value === 'pop' ? 'HALLO' : value === 'highlight' ? el('span', {}, el('em', {}, 'Hallo'), ' du') : 'Hallo'), el('span', { class: 'muted' }, text)));
+  parts.swatches = ACCENTS.map(([color, text]) => {
+    const swatch = el('button', {
+      class: 'swatch',
+      'data-color': color,
+      title: text,
+      'aria-label': `Farbe ${text}`,
+      onclick: () => setBurn({ color }),
+    });
+    swatch.style.setProperty('--swatch', color);
+    return swatch;
+  });
+  parts.colorRow = el('div', { class: 'marker-row' }, el('span', { class: 'muted slider-label' }, 'Farbe'), ...parts.swatches);
+  parts.burnHint = el('p', { class: 'muted' });
+  parts.burnButton = el('button', { class: 'button primary', onclick: burn }, 'Video mit Untertiteln erstellen');
+  const preview = el('input', {
+    type: 'checkbox',
+    checked: state.burn.preview,
+    onchange: () => setBurn({ preview: preview.checked }),
+  });
+
+  parts.burnCard = el('section', { class: 'card stack', hidden: true },
+    el('h2', {}, 'Untertitel einbrennen'),
+    el('div', { class: 'style-grid' }, ...parts.styleTiles),
+    el('div', { class: 'marker-row' }, el('span', { class: 'muted slider-label' }, 'Position'),
+      choice('Position', [{ value: 'bottom', text: 'Unten' }, { value: 'middle', text: 'Mitte' }, { value: 'top', text: 'Oben' }], state.burn.position, (position) => setBurn({ position }))),
+    el('div', { class: 'marker-row' }, el('span', { class: 'muted slider-label' }, 'Größe'),
+      choice('Größe', [{ value: 'small', text: 'Klein' }, { value: 'medium', text: 'Mittel' }, { value: 'large', text: 'Groß' }], state.burn.size, (size) => setBurn({ size }))),
+    parts.colorRow,
+    el('label', { class: 'check' }, preview, el('span', {}, 'Vorschau im Video zeigen')),
+    parts.burnHint,
+    el('div', {}, parts.burnButton),
+  );
+  return parts.burnCard;
+}
+
 function buildPage(root) {
   player = new MediaPlayer();
   player.root.classList.add('transcript-player');
 
   parts = {
     message: el('p', { class: 'message', role: 'alert', hidden: true }),
+    notice: el('p', { class: 'notice', role: 'status', hidden: true }),
     setup: el('div', { class: 'stack' }),
     drop: createFileDrop({
-      onFile: openFile,
+      onFiles: openFiles,
       title: 'Video oder Audio hierher ziehen',
+      hint: 'oder klicken, um auszuwählen. Mehrere Dateien werden nacheinander transkribiert.',
       features: [
         { iconName: 'transcribe', title: 'Gesprochenes erkennen', text: 'Auch mit Satzzeichen und Wortzeiten' },
         { iconName: 'globe', title: 'Viele Sprachen', text: 'Die Sprache wird automatisch erkannt' },
@@ -406,23 +817,44 @@ function buildPage(root) {
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
     info: el('p', { class: 'muted' }),
-    language: el('select', { class: 'input', 'aria-label': 'Sprache' },
-      ...LANGUAGES.map(([value, text]) => el('option', { value }, text))),
-    model: el('select', { class: 'input', 'aria-label': 'Sprachmodell' }),
+    fields: settingFields(),
+    batchFields: settingFields(),
     start: el('button', { class: 'button primary', onclick: start }, 'Transkribieren'),
     summary: el('p', { class: 'muted' }),
     list: el('div', { class: 'transcript-list' }),
+    search: el('input', {
+      class: 'input grow',
+      type: 'search',
+      placeholder: 'Im Text suchen',
+      'aria-label': 'Im Text suchen',
+      spellcheck: false,
+      oninput: runSearch,
+      onkeydown: (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        jumpToHit(event.shiftKey ? -1 : 1);
+      },
+    }),
+    searchCount: el('span', { class: 'muted search-count' }),
+    searchPrev: el('button', { class: 'button small', title: 'Vorheriger Treffer (Umschalt+Enter)', 'aria-label': 'Vorheriger Treffer', onclick: () => jumpToHit(-1) }, '↑'),
+    searchNext: el('button', { class: 'button small', title: 'Nächster Treffer (Enter)', 'aria-label': 'Nächster Treffer', onclick: () => jumpToHit(1) }, '↓'),
     saved: el('div', { class: 'marker-row', hidden: true }),
+    subOverlay: el('div', { class: 'sub-overlay', hidden: true, 'aria-hidden': 'true' }),
   };
 
+  player.root.append(parts.subOverlay);
   player.video.addEventListener('error', previewFailed);
   player.video.addEventListener('timeupdate', highlightCurrent);
   player.video.addEventListener('seeked', highlightCurrent);
+  player.video.addEventListener('seeked', renderOverlay);
+  player.video.addEventListener('timeupdate', renderOverlay);
+  player.video.addEventListener('play', watchOverlay);
+  player.video.addEventListener('loadedmetadata', requestCues);
+  window.addEventListener('resize', renderOverlay);
 
   const settingsCard = el('section', { class: 'card stack' },
     el('h2', {}, 'Einstellungen'),
-    el('label', { class: 'field' }, el('span', { class: 'muted' }, 'Sprache'), parts.language),
-    el('label', { class: 'field' }, el('span', { class: 'muted' }, 'Modell'), parts.model),
+    ...parts.fields.rows,
     el('div', {}, parts.start),
   );
   const saveCard = el('section', { class: 'card stack', hidden: true },
@@ -437,6 +869,7 @@ function buildPage(root) {
     el('h2', {}, 'Text'),
     parts.summary,
     el('p', { class: 'muted' }, 'Klick auf eine Zeit springt im Video dorthin. Den Text kannst du direkt verbessern, das wird beim Speichern übernommen.'),
+    el('div', { class: 'search-row' }, parts.search, parts.searchCount, parts.searchPrev, parts.searchNext),
     parts.list,
   );
   parts.resultCards = [saveCard, textCard];
@@ -448,7 +881,7 @@ function buildPage(root) {
     ),
     // Der Text scrollt in sich, so bleiben Video und Text nebeneinander sichtbar.
     el('div', { class: 'ai-columns transcript-columns' },
-      el('div', { class: 'stack ai-controls' }, el('section', { class: 'card stack' }, player.root), settingsCard, saveCard),
+      el('div', { class: 'stack ai-controls' }, el('section', { class: 'card stack' }, player.root), settingsCard, saveCard, buildBurnCard()),
       el('div', { class: 'stack ai-controls' }, textCard),
     ),
   );
@@ -459,15 +892,21 @@ function buildPage(root) {
     el('div', { class: 'url-row' }, parts.url, parts.loadLink),
   );
 
+  parts.folderRow = el('div', { class: 'marker-row', hidden: true },
+    el('button', { class: 'button small', onclick: pickFolder }, 'Ganzen Ordner transkribieren'));
+
   root.classList.add('wide-page');
   root.append(
     pageHeader('Transkribieren', 'Gesprochenes erkennen und als Untertitel oder Text speichern.'),
     parts.message,
+    parts.notice,
     // Ist alles eingerichtet, kommen Link und Datei zuerst, die Modellverwaltung darunter.
     parts.linkCard,
     parts.drop,
+    parts.folderRow,
     parts.setup,
     parts.workspace,
+    buildBatch(),
   );
   parts.drop.hidden = true;
 

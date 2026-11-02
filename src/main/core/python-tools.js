@@ -78,4 +78,10 @@ async function downloadFile(url, target, { signal, onProgress }) {
   await fs.rename(partPath, target);
 }
 
-module.exports = { exec, findPython, findGpu, folderSizeGb, downloadFile };
+// Im installierten Programm liegen die Skripte ausgepackt neben dem App-Archiv, weil Python dort nicht lesen kann.
+function pythonScript(name) {
+  return path.join(__dirname, '..', '..', 'python', name)
+    .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+}
+
+module.exports = { exec, findPython, findGpu, folderSizeGb, downloadFile, pythonScript };

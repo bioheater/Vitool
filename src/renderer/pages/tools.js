@@ -58,8 +58,10 @@ function selectTool(id) {
 
   const showsPicture = id === 'gif' || id === 'frame' || id === 'censor';
   parts.playerCard.hidden = !showsPicture;
+  parts.columns.classList.toggle('single', !showsPicture);
   if (!showsPicture) player.video.pause();
   censor.setActive(id === 'censor');
+  censor.timelineRoot.hidden = id !== 'censor';
   editor.root.hidden = id !== 'gif';
   editor.loopEnabled = id === 'gif';
   parts.frameControls.hidden = id !== 'frame';
@@ -223,7 +225,8 @@ function buildPage(root) {
     name: el('h2', { class: 'file-name' }),
     info: el('p', { class: 'muted' }),
     tabs: new Map(TOOLS.map((tool) => [tool.id, el('button', { class: 'segment', onclick: () => selectTool(tool.id) }, tool.label)])),
-    playerCard: el('section', { class: 'card stack' }),
+    playerCard: el('section', { class: 'card stack ai-video' }),
+    columns: el('div', { class: 'ai-columns tool-columns' }),
     frameControls: el('div', { class: 'marker-row', hidden: true }),
     gifWidth: el('select', { class: 'input', 'aria-label': 'Breite' },
       el('option', { value: '320' }, '320 Pixel'),
@@ -262,7 +265,7 @@ function buildPage(root) {
       state.frameFormat = value;
     }),
   );
-  parts.playerCard.append(player.root, editor.root, parts.frameControls);
+  parts.playerCard.append(player.root, editor.root, censor.timelineRoot, parts.frameControls);
 
   parts.subtitleChosen.append(
     el('span', { class: 'muted' }, 'Untertitel'),
@@ -310,18 +313,25 @@ function buildPage(root) {
       el('button', { class: 'button small', onclick: closeFile }, 'Andere Datei'),
     ),
     el('div', { class: 'tool-tabs segments', role: 'group', 'aria-label': 'Werkzeug' }, ...parts.tabs.values()),
+    // Wie bei KI-Maske: Video links und beim Scrollen stehend, Einstellungen rechts daneben.
+    parts.columns,
+  );
+  parts.columns.append(
     parts.playerCard,
-    ...parts.panels.values(),
-    el('section', { class: 'card stack' },
-      el('div', { class: 'folder-row' },
-        el('span', { class: 'muted' }, 'Zielordner'),
-        parts.folder,
-        el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern'),
+    el('div', { class: 'stack ai-controls' },
+      ...parts.panels.values(),
+      el('section', { class: 'card stack' },
+        el('div', { class: 'folder-row' },
+          el('span', { class: 'muted' }, 'Zielordner'),
+          parts.folder,
+          el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern'),
+        ),
+        el('div', {}, parts.start),
       ),
-      el('div', {}, parts.start),
     ),
   );
 
+  root.classList.add('wide-page');
   root.append(pageHeader('Werkzeuge', 'Kleine Helfer für alles rund um deine Videos.'), parts.message, parts.drop, parts.workspace);
 }
 

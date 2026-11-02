@@ -14,6 +14,8 @@ const INVOKE_CHANNELS = [
   'download:info',
   'download:start',
   'download:history',
+  'download:playlist',
+  'download:playlistStart',
   'download:clearHistory',
   'dialog:pickVideo',
   'media:probe',
@@ -50,6 +52,9 @@ const INVOKE_CHANNELS = [
   'transcribe:uninstall',
   'transcribe:start',
   'transcribe:fromLink',
+  'transcribe:cues',
+  'transcribe:burn',
+  'transcribe:batch',
   'transcribe:export',
 ];
 

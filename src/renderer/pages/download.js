@@ -6,11 +6,15 @@ import { SectionEditor } from '../components/section-editor.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
+const PLAYLIST_HEIGHTS = [2160, 1440, 1080, 720, 480, 360];
+
 const state = {
   info: null,
   settings: null,
   mode: 'video',
   useSections: false,
+  playlist: null,
+  playlistMode: 'video',
 };
 
 let parts = {};
@@ -30,7 +34,11 @@ async function loadInfo() {
   parts.load.disabled = true;
   parts.load.textContent = 'Lädt …';
   parts.result.hidden = true;
+  parts.playlistView.hidden = true;
+  parts.playlistNote.hidden = true;
   setMessage('');
+  // Der eingefügte Link enthält die Playlist, die Videoinfo nur noch das einzelne Video.
+  state.pastedUrl = url;
 
   const response = await invoke('download:info', url);
 
@@ -40,12 +48,122 @@ async function loadInfo() {
     setMessage(response.error);
     return;
   }
-  showInfo(response.info);
+  // Ein reiner Playlist-Link zeigt gleich die Liste, ein einzelnes Video daraus bietet sie an.
+  if (response.info.playlist === 'only') loadPlaylist(url);
+  else showInfo(response.info);
+}
+
+async function loadPlaylist(url) {
+  setMessage('');
+  parts.playlistButton.disabled = true;
+  parts.load.disabled = true;
+  parts.load.textContent = 'Lädt Playlist …';
+  const response = await invoke('download:playlist', url);
+  parts.playlistButton.disabled = false;
+  parts.load.disabled = false;
+  parts.load.textContent = 'Prüfen';
+  if (!response.ok) {
+    setMessage(response.error);
+    return;
+  }
+  stopPreview();
+  parts.playlistNote.hidden = true;
+  parts.plStatus.hidden = true;
+  state.playlist = response.playlist;
+  state.playlist.entries.forEach((entry) => {
+    entry.selected = entry.available;
+  });
+  parts.result.hidden = true;
+  parts.playlistView.hidden = false;
+  renderPlaylist();
+}
+
+function closePlaylist() {
+  state.playlist = null;
+  parts.playlistView.hidden = true;
+  const single = state.info && state.info.playlist === 'member';
+  parts.result.hidden = !single;
+  parts.playlistNote.hidden = !single;
+}
+
+function renderPlaylist() {
+  const { playlist } = state;
+  const selected = playlist.entries.filter((entry) => entry.selected);
+  const unavailable = playlist.entries.filter((entry) => !entry.available).length;
+  parts.playlistTitle.textContent = playlist.title;
+  parts.playlistMeta.textContent = [
+    playlist.uploader,
+    `${playlist.entries.length} Videos`,
+    unavailable ? `${unavailable} nicht verfügbar` : null,
+  ].filter(Boolean).join(' · ');
+  parts.playlistList.replaceChildren(...playlist.entries.map((entry) => {
+    const check = el('input', {
+      type: 'checkbox',
+      checked: entry.selected,
+      disabled: !entry.available,
+      'aria-label': entry.title,
+      onchange: () => {
+        entry.selected = check.checked;
+        renderPlaylistCount();
+      },
+    });
+    return el('li', {},
+      el('label', { class: `playlist-row ${entry.available ? '' : 'unavailable'}` },
+        check,
+        el('span', { class: 'muted playlist-index' }, String(entry.index)),
+        el('span', { class: 'playlist-name', title: entry.title }, entry.title),
+        el('span', { class: 'muted' }, entry.duration ? formatTime(entry.duration) : '')));
+  }));
+  const audio = state.playlistMode === 'audio';
+  parts.plVideo.classList.toggle('active', !audio);
+  parts.plAudio.classList.toggle('active', audio);
+  parts.plVideo.setAttribute('aria-pressed', String(!audio));
+  parts.plAudio.setAttribute('aria-pressed', String(audio));
+  parts.plQuality.hidden = audio;
+  parts.plFolder.textContent = state.settings.downloadDir;
+  parts.plFolder.title = state.settings.downloadDir;
+  parts.plSubfolderName.textContent = `„${playlist.title}“`;
+  renderPlaylistCount(selected);
+}
+
+function renderPlaylistCount(selected = state.playlist.entries.filter((entry) => entry.selected)) {
+  const count = selected.length;
+  parts.plCount.textContent = `${count} ausgewählt`;
+  parts.plStart.disabled = count === 0;
+  parts.plStart.textContent = count === 1 ? '1 Video herunterladen' : `${count} Videos herunterladen`;
+}
+
+function selectAll(selected) {
+  state.playlist.entries.forEach((entry) => {
+    entry.selected = selected && entry.available;
+  });
+  renderPlaylist();
+}
+
+async function startPlaylist() {
+  const { playlist } = state;
+  const entries = playlist.entries.filter((entry) => entry.selected);
+  const response = await invoke('download:playlistStart', {
+    entries: entries.map(({ url, title, thumbnail, duration }) => ({ url, title, thumbnail, duration })),
+    mode: state.playlistMode,
+    height: Number(parts.plQuality.value) || null,
+    folder: state.settings.downloadDir,
+    subfolder: parts.plSubfolder.checked,
+    playlistTitle: playlist.title,
+  });
+  if (!response.ok) {
+    setMessage(response.error);
+    return;
+  }
+  setMessage('');
+  parts.plStatus.textContent = `${response.count} ${response.count === 1 ? 'Video ist' : 'Videos sind'} in der Warteschlange. Ziel: ${response.folder}`;
+  parts.plStatus.hidden = false;
 }
 
 function showInfo(info) {
   state.info = info;
   state.useSections = false;
+  parts.playlistNote.hidden = info.playlist !== 'member';
 
   parts.thumb.src = info.thumbnail ?? '';
   parts.thumb.hidden = !info.thumbnail;
@@ -155,8 +273,10 @@ async function chooseFolder() {
   const folder = await invoke('dialog:pickFolder', state.settings.downloadDir);
   if (!folder) return;
   state.settings = await invoke('settings:set', { downloadDir: folder });
-  parts.folder.textContent = folder;
-  parts.folder.title = folder;
+  [parts.folder, parts.plFolder].forEach((node) => {
+    node.textContent = folder;
+    node.title = folder;
+  });
 }
 
 // Ohne Bild, etwa bei älteren Einträgen oder ohne Internet, erscheint ein Symbol.
@@ -225,7 +345,53 @@ function buildPage(root) {
     history: el('ul', { class: 'history-list' }),
     historyEmpty: el('p', { class: 'muted' }, 'Noch keine Downloads.'),
     historyClear: el('button', { class: 'button small', onclick: async () => renderHistory(await invoke('download:clearHistory')) }, 'Verlauf leeren'),
+    playlistNote: el('section', { class: 'card playlist-note', hidden: true }),
+    playlistButton: el('button', { class: 'button small', onclick: () => loadPlaylist(state.pastedUrl) }, 'Ganze Playlist anzeigen'),
+    playlistView: el('div', { class: 'stack', hidden: true }),
+    playlistTitle: el('h2', {}),
+    playlistMeta: el('p', { class: 'muted' }),
+    playlistList: el('ul', { class: 'playlist-list' }),
+    plCount: el('span', { class: 'muted' }),
+    plVideo: el('button', { class: 'segment', onclick: () => { state.playlistMode = 'video'; renderPlaylist(); } }, 'Video'),
+    plAudio: el('button', { class: 'segment', onclick: () => { state.playlistMode = 'audio'; renderPlaylist(); } }, 'Nur Audio (MP3)'),
+    plQuality: el('select', { class: 'input', 'aria-label': 'Qualität für alle Videos' },
+      el('option', { value: '' }, 'Beste Qualität'),
+      ...PLAYLIST_HEIGHTS.map((height) => el('option', { value: String(height) }, `Höchstens ${height}p`))),
+    plFolder: el('span', { class: 'folder-path' }),
+    plSubfolder: el('input', { type: 'checkbox', checked: true }),
+    plSubfolderName: el('strong', {}),
+    plStart: el('button', { class: 'button primary large', onclick: startPlaylist }),
+    plStatus: el('p', { class: 'notice', role: 'status', hidden: true }),
   };
+
+  parts.playlistNote.append(
+    el('span', {}, 'Dieses Video gehört zu einer Playlist.'),
+    parts.playlistButton,
+  );
+  parts.playlistView.append(
+    el('section', { class: 'card stack' },
+      el('div', { class: 'section-head' },
+        el('div', { class: 'video-text' }, parts.playlistTitle, parts.playlistMeta),
+        el('button', { class: 'button small', onclick: closePlaylist }, 'Schließen')),
+      el('div', { class: 'marker-row' },
+        el('button', { class: 'button small', onclick: () => selectAll(true) }, 'Alle'),
+        el('button', { class: 'button small', onclick: () => selectAll(false) }, 'Keine'),
+        parts.plCount),
+      parts.playlistList,
+    ),
+    el('section', { class: 'card stack' },
+      el('div', { class: 'option-row' },
+        el('div', { class: 'segments', role: 'group', 'aria-label': 'Art des Downloads' }, parts.plVideo, parts.plAudio),
+        parts.plQuality),
+      el('div', { class: 'folder-row' },
+        el('span', { class: 'muted' }, 'Zielordner'),
+        parts.plFolder,
+        el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern')),
+      el('label', { class: 'check' }, parts.plSubfolder, el('span', {}, 'In einen eigenen Unterordner ', parts.plSubfolderName)),
+      parts.plStatus,
+      el('div', {}, parts.plStart),
+    ),
+  );
 
   parts.previewHint.textContent = 'Für dieses Video ist keine Vorschau möglich. Lege die Zeiten über Griffe oder Eingabefelder fest.';
   parts.preview.append(parts.video);
@@ -274,7 +440,9 @@ function buildPage(root) {
     pageHeader('Download', 'Link einfügen, Qualität wählen, fertig.'),
     el('section', { class: 'card' }, el('div', { class: 'url-row' }, parts.url, parts.load)),
     parts.message,
+    parts.playlistNote,
     parts.result,
+    parts.playlistView,
     el('section', { class: 'card stack history' },
       el('div', { class: 'section-head' }, el('h2', {}, 'Verlauf'), parts.historyClear),
       parts.historyEmpty,

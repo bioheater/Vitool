@@ -914,3 +914,277 @@ body {
   background: rgba(8, 10, 15, 0.5);
   box-shadow: 0 0 0 1px var(--border);
 }
+
+.search-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.search-count {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  min-width: 78px;
+  text-align: right;
+}
+
+::highlight(transcript-search) {
+  background-color: rgba(47, 198, 232, 0.3);
+  color: inherit;
+}
+
+::highlight(transcript-current) {
+  background-color: rgba(255, 200, 60, 0.75);
+  color: #0b0e14;
+}
+
+/* Untertitel einbrennen: Auswahl und Vorschau über dem Video */
+.style-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+}
+
+.style-tile {
+  align-items: center;
+  background: linear-gradient(135deg, #3a4a63, #1c2433);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  color: var(--text);
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: 6px;
+  justify-items: center;
+  padding: 14px 8px 8px;
+  transition: border-color 0.16s, box-shadow 0.16s;
+}
+
+.style-tile:hover,
+.style-tile.active {
+  border-color: var(--accent-2);
+  box-shadow: 0 0 14px rgba(47, 198, 232, 0.25);
+}
+
+.style-tile .muted {
+  font-size: 12.5px;
+}
+
+.style-sample {
+  color: #fff;
+  font-family: Arial, sans-serif;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.2;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 3px #000;
+}
+
+.sample-box {
+  background: rgba(0, 0, 0, 0.65);
+  padding: 2px 8px;
+  -webkit-text-stroke: 0;
+}
+
+.sample-highlight em {
+  color: #ffd400;
+  font-style: normal;
+}
+
+.sample-pop {
+  color: #ffd400;
+  font-family: 'Arial Black', Arial, sans-serif;
+  font-size: 20px;
+  -webkit-text-stroke: 4px #000;
+}
+
+.swatch {
+  background: var(--swatch);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--border);
+  cursor: pointer;
+  height: 24px;
+  padding: 0;
+  width: 24px;
+}
+
+.swatch.active {
+  border-color: #fff;
+}
+
+.transcript-player {
+  position: relative;
+}
+
+.sub-overlay {
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  padding: var(--sub-margin, 0) 5%;
+  pointer-events: none;
+  position: absolute;
+}
+
+.sub-overlay[hidden] {
+  display: none;
+}
+
+.sub-overlay.pos-bottom {
+  align-items: flex-end;
+}
+
+.sub-overlay.pos-middle {
+  align-items: center;
+}
+
+.sub-overlay.pos-top {
+  align-items: flex-start;
+}
+
+.sub-text {
+  color: #fff;
+  font-family: var(--sub-font), Arial, sans-serif;
+  font-size: var(--sub-size);
+  font-weight: var(--sub-weight);
+  line-height: 1.22;
+  max-width: 100%;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.sub-outline .sub-text {
+  paint-order: stroke fill;
+  text-shadow: var(--sub-shadow) var(--sub-shadow) 0 rgba(0, 0, 0, 0.5);
+  -webkit-text-stroke: calc(var(--sub-outline) * 2) #000;
+}
+
+.sub-box .sub-line {
+  background: rgba(0, 0, 0, 0.65);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  padding: calc(var(--sub-box) * 0.6) var(--sub-box);
+}
+
+.sub-upper .sub-text {
+  text-transform: uppercase;
+}
+
+.sub-word.active {
+  color: var(--sub-accent);
+}
+
+/* Das Aufploppen gehört zum Untertitel-Style und läuft nur einmal pro Untertitel. */
+.sub-pop .sub-text {
+  animation: sub-pop 90ms ease-out;
+}
+
+@keyframes sub-pop {
+  from {
+    transform: scale(0.8);
+  }
+
+  to {
+    transform: scale(1);
+  }
+}
+
+/* Stapel-Transkription */
+.notice {
+  background: var(--accent-soft);
+  border: 1px solid rgba(61, 220, 151, 0.35);
+  border-radius: var(--radius-small);
+  margin: 0;
+  padding: 10px 14px;
+}
+
+.batch-list {
+  display: grid;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.batch-item {
+  align-items: center;
+  background: rgba(8, 10, 15, 0.42);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 6px 10px;
+}
+
+.batch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.format-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+}
+
+/* Playlist-Download */
+.playlist-note {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.playlist-list {
+  display: grid;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.playlist-row {
+  align-items: center;
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto 28px minmax(0, 1fr) auto;
+  padding: 6px 8px;
+}
+
+.playlist-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.playlist-row.unavailable {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.playlist-index {
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.playlist-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Werkzeuge: ohne Bild (Audio, Untertitel) nur eine Spalte */
+.tool-columns.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tool-columns .ai-controls .marker-row {
+  flex-wrap: wrap;
+}

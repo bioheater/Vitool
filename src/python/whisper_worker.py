@@ -29,6 +29,7 @@ def transcribe(job, audio, device):
     segments, info = model.transcribe(
         audio,
         language=job.get("language") or None,
+        task="translate" if job.get("translate") else "transcribe",
         word_timestamps=True,
         vad_filter=True,
         beam_size=5,

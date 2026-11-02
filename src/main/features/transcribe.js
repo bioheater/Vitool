@@ -9,8 +9,10 @@ const { app, BrowserWindow, dialog } = require('electron');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
-const { exec, findPython, findGpu, folderSizeGb, downloadFile } = require('../core/python-tools');
+const { exec, findPython, findGpu, folderSizeGb, downloadFile, pythonScript } = require('../core/python-tools');
+const { moveFile, uniquePath } = require('../core/files');
 const { FORMATS } = require('./transcript-formats');
+const { STYLES, lookFor, cuesFor, toAss } = require('./subtitle-styles');
 const { commonArgs } = require('./download');
 
 const LINK_FILE_MARKER = 'VITOOLFILE|';
@@ -132,7 +134,30 @@ function register({ ipcMain, queue, store, tools, send }) {
     await fs.rename(partDir, modelPath(model));
   }
 
+  // Immer nur eine Erkennung gleichzeitig: Zwei Sprachmodelle würden sich Grafikkarte und Speicher teilen.
+  let transcribeLock = Promise.resolve();
+
   async function runTranscribe(options, media, job) {
+    const previous = transcribeLock;
+    let release;
+    transcribeLock = new Promise((resolve) => { release = resolve; });
+    try {
+      job.update({ detail: 'Wartet auf die vorige Transkription', progress: null });
+      await Promise.race([
+        previous,
+        new Promise((_resolve, reject) => {
+          if (job.signal.aborted) reject(new CanceledError());
+          job.signal.addEventListener('abort', () => reject(new CanceledError()), { once: true });
+        }),
+      ]);
+      return await transcribeNow(options, media, job);
+    } finally {
+      // Ein abgebrochener Wartender gibt erst frei, wenn sein Vorgänger fertig ist.
+      previous.then(release);
+    }
+  }
+
+  async function transcribeNow(options, media, job) {
     const model = findModel(options.model);
     const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-text-'));
     const audio = path.join(temp, 'ton.raw');
@@ -147,11 +172,17 @@ function register({ ipcMain, queue, store, tools, send }) {
         onProgress: (part) => job.update({ progress: part * 5, detail: 'Liest den Ton' }),
       });
 
-      await fs.writeFile(jobFile, JSON.stringify({ model: modelPath(model), audio, output, language: options.language || null }), 'utf8');
+      await fs.writeFile(jobFile, JSON.stringify({
+        model: modelPath(model),
+        audio,
+        output,
+        language: options.language || null,
+        translate: Boolean(options.translate),
+      }), 'utf8');
       job.update({ detail: 'Lädt Sprachmodell', progress: 5 });
       let device = null;
       let workerError = null;
-      const script = path.join(__dirname, '..', '..', 'python', 'whisper_worker.py');
+      const script = pythonScript('whisper_worker.py');
       await run(envPython, ['-u', script, jobFile], {
         signal: job.signal,
         onLine: (line, stream) => {
@@ -171,25 +202,29 @@ function register({ ipcMain, queue, store, tools, send }) {
       });
 
       const result = JSON.parse(await fs.readFile(output, 'utf8'));
-      return { ...result, model: model.id };
+      return { ...result, model: model.id, translated: Boolean(options.translate) };
     } finally {
       await fs.rm(temp, { recursive: true, force: true }).catch(() => {});
     }
   }
 
   // Lädt nur die Tonspur, das geht viel schneller als das ganze Video.
-  async function runLinkDownload(url, job) {
-    if (linkDir) await fs.rm(linkDir, { recursive: true, force: true }).catch(() => {});
-    linkDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-link-'));
+  // Zum Transkribieren genügt der Ton, zum Einbrennen braucht es das Video (höchstens 1080p).
+  async function downloadFromLink(url, dir, job, { video = false, share = 1 } = {}) {
+    const label = video ? 'Lädt Video' : 'Lädt Ton';
+    const format = video
+      ? ['-f', 'bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b', '-S', 'vcodec:h264,acodec:aac', '--merge-output-format', 'mp4']
+      : ['-f', 'ba/b'];
     let filePath = null;
-    job.update({ detail: 'Lädt Ton …' });
+    job.update({ detail: `${label} …` });
     await run(tools.path('ytdlp'), [
       ...commonArgs(tools),
       '--ffmpeg-location', path.dirname(tools.path('ffmpegDownload') ?? tools.path('ffmpeg')),
       '--newline', '--progress', '--no-quiet',
       '--progress-template', `download:${LINK_PROGRESS_MARKER}%(progress._percent|)s`,
       '--print', `after_move:${LINK_FILE_MARKER}%(filepath)s`,
-      '-f', 'ba/b', '-P', linkDir, '-o', '%(title).100B.%(ext)s',
+      // Ein Playlist-Link soll nie die ganze Liste laden.
+      ...format, '--playlist-items', '1', '-P', dir, '-o', '%(title).100B.%(ext)s',
       '--', url,
     ], {
       signal: job.signal,
@@ -197,12 +232,54 @@ function register({ ipcMain, queue, store, tools, send }) {
         if (line.startsWith(LINK_FILE_MARKER)) filePath = line.slice(LINK_FILE_MARKER.length).trim();
         if (line.startsWith(LINK_PROGRESS_MARKER)) {
           const value = Number.parseFloat(line.slice(LINK_PROGRESS_MARKER.length));
-          if (Number.isFinite(value)) job.update({ progress: value, detail: 'Lädt Ton' });
+          if (Number.isFinite(value)) job.update({ progress: value * share, detail: label });
         }
       },
     });
     if (!filePath) throw new Error('Keine Datei erhalten');
     return filePath;
+  }
+
+  async function runLinkDownload(url, job) {
+    if (linkDir) await fs.rm(linkDir, { recursive: true, force: true }).catch(() => {});
+    linkDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-link-'));
+    return downloadFromLink(url, linkDir, job);
+  }
+
+  async function runBurn(options, job) {
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-'));
+    try {
+      const fromLink = Boolean(options.linkUrl);
+      const source = fromLink
+        ? await downloadFromLink(options.linkUrl, temp, job, { video: true, share: 0.4 })
+        : options.filePath;
+      const media = await probeMedia(tools.path('ffprobe'), source);
+      if (!media.hasVideo) throw new UserError('Diese Datei hat kein Bild. Untertitel lassen sich nur in Videos einbrennen.');
+
+      await fs.writeFile(path.join(temp, 'untertitel.ass'), toAss(options.transcript, options, { width: media.width, height: media.height }), 'utf8');
+      const output = path.join(temp, 'ergebnis.mp4');
+      const audio = media.hasAudio
+        ? ['-map', '0:a:0', ...(['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k'])]
+        : [];
+      const start = fromLink ? 40 : 0;
+      await runFfmpeg(tools.path('ffmpeg'), [
+        '-i', source, '-map', '0:v:0', ...audio,
+        // Über den relativen Namen entfallen die Sonderregeln für Windows-Pfade im Filter.
+        '-vf', 'subtitles=untertitel.ass',
+        '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output,
+      ], {
+        cwd: temp,
+        duration: media.duration,
+        signal: job.signal,
+        onProgress: (part) => job.update({ progress: start + part * (100 - start), detail: 'Brennt Untertitel ein' }),
+      });
+
+      const name = (options.name || path.parse(media.name).name).replace(/[<>:"/\\|?*]/g, '').trim() || 'Video';
+      const folder = fromLink ? store.get('settings').downloadDir : path.dirname(options.filePath);
+      return await moveFile(output, folder, `${name} (mit Untertiteln).mp4`);
+    } finally {
+      await fs.rm(temp, { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   const handle = (channel, action) => ipcMain.handle(channel, async (_event, ...args) => {
@@ -294,6 +371,54 @@ function register({ ipcMain, queue, store, tools, send }) {
     if (result.canceled) return { path: null };
     await fs.writeFile(result.filePath, target.build(transcript), 'utf8');
     return { path: result.filePath };
+  });
+
+  // Stapel: Jede Datei wird ein eigener Auftrag, die Ergebnisse landen ohne Nachfrage neben dem Original.
+  async function runBatchFile(filePath, options, job) {
+    const media = await probeMedia(tools.path('ffprobe'), filePath);
+    if (!media.hasAudio) throw new UserError('Diese Datei hat keine Tonspur.');
+    const transcript = await runTranscribe(options, media, job);
+    const { dir, name } = path.parse(filePath);
+    let first = null;
+    for (const format of options.formats) {
+      const target = FORMATS[format];
+      const file = await uniquePath(dir, `${name}${target.suffix ?? ''}.${target.ext}`);
+      await fs.writeFile(file, target.build(transcript), 'utf8');
+      first ??= file;
+    }
+    return first;
+  }
+
+  handle('transcribe:batch', (options) => {
+    if (!options.files?.length) throw new UserError('Bitte wähle mindestens eine Datei.');
+    if (!options.formats?.length || options.formats.some((format) => !FORMATS[format])) {
+      throw new UserError('Bitte wähle mindestens ein Format zum Speichern.');
+    }
+    findModel(options.model);
+    options.files.forEach((filePath) => {
+      queue.add({
+        title: `Transkribieren: ${path.basename(filePath)}`,
+        kind: 'transcribe',
+        run: (job) => runBatchFile(filePath, options, job),
+      });
+    });
+    return { count: options.files.length };
+  });
+
+  // Die Vorschau bekommt dieselben Untertitel und Maße wie das eingebrannte Video.
+  handle('transcribe:cues', ({ transcript, options, video }) => {
+    if (!STYLES[options.style]) throw new UserError('Diesen Style gibt es nicht.');
+    return { cues: cuesFor(transcript, options, video), look: lookFor(options, video) };
+  });
+
+  handle('transcribe:burn', (options) => {
+    if (!STYLES[options.style]) throw new UserError('Diesen Style gibt es nicht.');
+    if (!options.transcript?.segments?.length) throw new UserError('Es gibt noch keinen Text zum Einbrennen.');
+    queue.add({
+      title: `Untertitel einbrennen: ${options.name}`,
+      kind: 'transcribe',
+      run: (job) => runBurn(options, job),
+    });
   });
 
   register.dispose = () => {

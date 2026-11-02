@@ -44,7 +44,12 @@ function pickPreview(formats) {
 
 function normalizeInfo(raw, url) {
   const info = raw.entries ? raw.entries.find(Boolean) : raw;
-  if (!info) throw new UserError('Unter diesem Link wurde kein Video gefunden.');
+  // Reiner Playlist-Link oder ein Video, das zu einer Playlist gehört (YouTube: "list=" im Link).
+  const playlist = raw._type === 'playlist' ? 'only' : /[?&]list=/.test(url) ? 'member' : null;
+  if (!info) {
+    if (playlist) return { url, title: raw.title ?? 'Playlist', playlist: 'only', heights: [] };
+    throw new UserError('Unter diesem Link wurde kein Video gefunden.');
+  }
 
   const formats = info.formats ?? [];
   const heights = [...new Set(
@@ -64,7 +69,48 @@ function normalizeInfo(raw, url) {
     previewUrl: preview?.url ?? null,
     previewKind: preview?.kind ?? null,
     previewHeaders: preview?.headers ?? null,
+    playlist,
   };
+}
+
+const UNAVAILABLE_TITLES = ['[Private video]', '[Deleted video]', '[Unavailable video]'];
+
+// Manche Seiten liefern in der schnellen Liste keine Titel. Dann hilft der lesbare Teil des Links.
+function titleFromUrl(url) {
+  try {
+    const slug = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() ?? '');
+    if (!/[a-z]{3}/i.test(slug) || /^[\w-]{11}$/.test(slug) && !slug.includes('_')) return null;
+    const words = slug.replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[_-]+/g, ' ').trim();
+    return words ? words[0].toUpperCase() + words.slice(1) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Listet die Videos einer Playlist, ohne jedes einzeln abzufragen. Das geht auch bei langen Listen schnell.
+function normalizePlaylist(raw, url) {
+  const entries = (raw.entries ?? []).filter(Boolean).map((entry, index) => {
+    const entryUrl = entry.url ?? entry.webpage_url ?? null;
+    return {
+      index: index + 1,
+      url: entryUrl,
+      title: entry.title || titleFromUrl(entryUrl) || `Video ${index + 1}`,
+      duration: entry.duration ?? null,
+      thumbnail: entry.thumbnails?.at(-1)?.url ?? entry.thumbnail ?? null,
+      available: Boolean(entryUrl) && !UNAVAILABLE_TITLES.includes(entry.title),
+    };
+  });
+  if (entries.length === 0) throw new UserError('In dieser Playlist wurden keine Videos gefunden.');
+  return {
+    url: raw.webpage_url ?? url,
+    title: raw.title ?? 'Playlist',
+    uploader: raw.uploader ?? raw.channel ?? null,
+    entries,
+  };
+}
+
+function safeFolderName(name) {
+  return name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/[. ]+$/, '').trim().slice(0, 120) || 'Playlist';
 }
 
 function buildArgs(options, tools, tempDir) {
@@ -284,6 +330,48 @@ function register({ ipcMain, queue, store, tools, send }) {
       run: (job) => runDownload(options, job),
     });
     return { ok: true };
+  });
+
+  ipcMain.handle('download:playlist', async (_event, url) => {
+    try {
+      if (!/^https?:\/\//i.test(url ?? '')) throw new UserError('Bitte gib einen gültigen Link ein.');
+      const base = commonArgs(tools).filter((arg) => arg !== '--no-playlist');
+      const args = [...base, '-J', '--flat-playlist', '--yes-playlist', '--no-warnings', '--', url];
+      const { stdout } = await run(tools.path('ytdlp'), args);
+      return { ok: true, playlist: normalizePlaylist(JSON.parse(stdout), url) };
+    } catch (error) {
+      return { ok: false, error: toGermanMessage(error) };
+    }
+  });
+
+  // Jedes Video wird ein eigener Auftrag und erscheint einzeln im Verlauf.
+  ipcMain.handle('download:playlistStart', async (_event, options) => {
+    try {
+      if (!options.folder) throw new UserError('Bitte wähle einen Zielordner.');
+      if (!options.entries?.length) throw new UserError('Bitte wähle mindestens ein Video aus.');
+      const folder = options.subfolder ? path.join(options.folder, safeFolderName(options.playlistTitle)) : options.folder;
+      await fs.mkdir(folder, { recursive: true });
+      options.entries.forEach((entry) => {
+        const single = {
+          url: entry.url,
+          title: entry.title,
+          thumbnail: entry.thumbnail,
+          duration: entry.duration,
+          mode: options.mode,
+          height: options.height,
+          sections: [],
+          exact: false,
+          merge: false,
+          folder,
+          openInCut: false,
+        };
+        validate(single);
+        queue.add({ title: entry.title, kind: 'download', run: (job) => runDownload(single, job) });
+      });
+      return { ok: true, count: options.entries.length, folder };
+    } catch (error) {
+      return { ok: false, error: toGermanMessage(error) };
+    }
   });
 
   ipcMain.handle('download:history', () => getHistory());
