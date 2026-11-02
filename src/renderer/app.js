@@ -10,7 +10,8 @@ import settingsPage from './pages/settings.js';
 import { mountQueuePanel } from './components/queue-panel.js';
 import { checkTools } from './components/tools-dialog.js';
 import { installVideoKeys } from './components/video-controls.js';
-import { icon } from './utils/dom.js';
+import { el, icon } from './utils/dom.js';
+import { setupSidebar } from './components/sidebar.js';
 import { ICONS } from './utils/icons.js';
 import { setNavigator } from './utils/navigation.js';
 
@@ -18,6 +19,7 @@ import { setNavigator } from './utils/navigation.js';
 const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage, aiPage, transcribePage, settingsPage];
 
 const nav = document.getElementById('nav');
+const navBottom = document.getElementById('nav-bottom');
 const pageRoot = document.getElementById('page');
 const navButtons = new Map();
 const pageRoots = new Map();
@@ -35,11 +37,13 @@ function showPage(id, data) {
 
 pages.forEach((page) => {
   const button = document.createElement('button');
-  // Einstellungen stehen abgesetzt am Ende der Leiste.
-  button.className = page.bottom ? 'nav-item nav-bottom' : 'nav-item';
-  button.append(icon(ICONS[page.id]), page.label);
+  button.className = 'nav-item';
+  // Eingeklappt bleibt nur das Symbol, der Name erscheint dann beim Darüberfahren.
+  button.title = page.label;
+  button.append(icon(ICONS[page.id]), el('span', { class: 'nav-label' }, page.label));
   button.addEventListener('click', () => showPage(page.id));
-  nav.append(button);
+  // Einstellungen stehen ganz unten in der Leiste.
+  (page.bottom ? navBottom : nav).append(button);
   navButtons.set(page.id, button);
 
   const root = document.createElement('div');
@@ -56,6 +60,11 @@ setNavigator((id, data) => showPage(id, data));
 document.addEventListener('dragover', (event) => event.preventDefault());
 document.addEventListener('drop', (event) => event.preventDefault());
 
+setupSidebar({
+  shell: document.querySelector('.shell'),
+  bottom: navBottom,
+  resizer: document.getElementById('sidebar-resizer'),
+});
 installVideoKeys();
 mountQueuePanel(document.getElementById('queue'));
 showPage('download');

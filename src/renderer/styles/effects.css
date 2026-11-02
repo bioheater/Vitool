@@ -1248,12 +1248,71 @@ body {
   margin: 0;
 }
 
-/* Einstellungen: abgesetzt am Ende der Seitenleiste */
-.nav-item.nav-bottom {
+/* Seitenleiste: Einstellungen und Einklappen ganz unten, Breite ziehbar, eingeklappt nur Symbole */
+.nav-end {
   border-top: 1px solid var(--border);
-  border-radius: 0 0 var(--radius-small) var(--radius-small);
-  margin-top: 10px;
-  padding-top: 12px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.nav-label,
+.brand-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-item svg,
+.brand-mark {
+  flex-shrink: 0;
+}
+
+.sidebar-toggle {
+  font-size: 13px;
+}
+
+.sidebar-resizer {
+  cursor: col-resize;
+  height: 100%;
+  position: absolute;
+  right: -3px;
+  top: 0;
+  width: 6px;
+  z-index: 5;
+}
+
+.sidebar-resizer:hover,
+.resizing .sidebar-resizer {
+  background: linear-gradient(90deg, transparent 2px, var(--accent-2) 2px, var(--accent-2) 4px, transparent 4px);
+}
+
+.shell.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.shell.collapsed .nav-label,
+.shell.collapsed .brand-name {
+  display: none;
+}
+
+.shell.collapsed .sidebar {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.shell.collapsed .brand {
+  justify-content: center;
+  margin: 0 0 22px;
+}
+
+.shell.collapsed .nav-item {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+.shell.collapsed .nav-item:hover {
+  transform: none;
 }
 
 .notice .button {

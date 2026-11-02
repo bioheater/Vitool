@@ -1,7 +1,7 @@
 /* Grundlayout: Seitenleiste links, Inhalt rechts, Warteschlange unten. */
 .shell {
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 208px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100vh;
 }
@@ -9,8 +9,12 @@
 .sidebar {
   background: var(--surface);
   border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
   grid-row: 1 / 3;
-  padding: 20px 12px;
+  min-width: 0;
+  padding: 20px 12px 12px;
+  position: relative;
 }
 
 .brand {
