@@ -7,6 +7,7 @@ const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run } = require('../core/process-runner');
 const { runFfmpeg } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
+const { t } = require('../core/i18n');
 
 const EXTRACT_EXTENSIONS = {
   subrip: 'srt', ass: 'ass', ssa: 'ssa', webvtt: 'vtt', mov_text: 'srt',
@@ -17,7 +18,7 @@ const CHANNEL_NAMES = { 1: 'Mono', 2: 'Stereo', 6: '5.1', 8: '7.1' };
 
 function describeTrack(stream) {
   if (stream.codec_type === 'video') return `${stream.width} × ${stream.height}`;
-  if (stream.codec_type === 'audio') return CHANNEL_NAMES[stream.channels] ?? `${stream.channels} Kanäle`;
+  if (stream.codec_type === 'audio') return CHANNEL_NAMES[stream.channels] ?? t('{count} Kanäle', { count: stream.channels });
   return '';
 }
 
@@ -41,7 +42,7 @@ async function readTracks(ffprobe, filePath) {
   const { streams, format } = JSON.parse(stdout);
   const usable = streams.filter((stream) =>
     ['video', 'audio', 'subtitle'].includes(stream.codec_type) && !stream.disposition?.attached_pic);
-  if (usable.length === 0) throw new UserError('In dieser Datei wurden keine Spuren gefunden.');
+  if (usable.length === 0) throw new UserError(t('In dieser Datei wurden keine Spuren gefunden.'));
   return { title: format.tags?.title ?? '', streams: usable };
 }
 
@@ -73,7 +74,7 @@ function register({ ipcMain, queue, tools }) {
     const name = path.parse(options.files[0]).name;
 
     try {
-      job.update({ detail: 'Speichert Spuren' });
+      job.update({ detail: t('Speichert Spuren') });
       await runFfmpeg(tools.path('ffmpeg'), [
         ...inputs,
         '-map_chapters', '0',
@@ -93,8 +94,8 @@ function register({ ipcMain, queue, tools }) {
 
   ipcMain.handle('mkv:save', (_event, options) => {
     const kept = options.tracks.filter((track) => track.keep);
-    if (kept.length === 0) return { ok: false, error: 'Bitte behalte mindestens eine Spur.' };
-    if (!options.folder) return { ok: false, error: 'Bitte wähle einen Zielordner.' };
+    if (kept.length === 0) return { ok: false, error: t('Bitte behalte mindestens eine Spur.') };
+    if (!options.folder) return { ok: false, error: t('Bitte wähle einen Zielordner.') };
     queue.add({
       title: path.basename(options.files[0]),
       kind: 'mkv',
@@ -113,9 +114,9 @@ function register({ ipcMain, queue, tools }) {
     const name = path.parse(options.filePath).name;
 
     try {
-      job.update({ detail: 'Holt Spur heraus' });
+      job.update({ detail: t('Holt Spur heraus') });
       await runFfmpeg(tools.path('ffmpeg'), ['-i', options.filePath, '-map', `0:${track.index}`, ...codec, output], { signal: job.signal });
-      return await moveFile(output, options.folder, `${name} (Spur ${track.index + 1}${language}).${ext}`);
+      return await moveFile(output, options.folder, `${name} (${t('Spur {number}', { number: track.index + 1 })}${language}).${ext}`);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -123,7 +124,7 @@ function register({ ipcMain, queue, tools }) {
 
   ipcMain.handle('mkv:extract', (_event, options) => {
     queue.add({
-      title: `Spur ${options.track.index + 1}: ${path.basename(options.filePath)}`,
+      title: t('Spur {number}: {name}', { number: options.track.index + 1, name: path.basename(options.filePath) }),
       kind: 'mkv',
       run: (job) => runExtract(options, job),
     });

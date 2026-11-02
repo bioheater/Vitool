@@ -3,14 +3,15 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
+const { t } = require('./i18n');
 
 const TOOLS = [
-  { id: 'ytdlp', exe: 'yt-dlp', label: 'yt-dlp', purpose: 'Lädt Videos herunter', required: true, versionArg: '--version', install: 'winget install yt-dlp.yt-dlp' },
-  { id: 'ffmpeg', exe: 'ffmpeg', label: 'FFmpeg', purpose: 'Schneidet und konvertiert Videos', required: true, versionArg: '-version', install: 'winget install Gyan.FFmpeg' },
-  { id: 'ffprobe', exe: 'ffprobe', label: 'ffprobe', purpose: 'Liest Videoinformationen (gehört zu FFmpeg)', required: true, versionArg: '-version', install: 'winget install Gyan.FFmpeg' },
-  { id: 'deno', exe: 'deno', label: 'Deno', purpose: 'Wird für YouTube-Downloads gebraucht', required: false, versionArg: '--version', install: 'winget install DenoLand.Deno' },
+  { id: 'ytdlp', exe: 'yt-dlp', label: 'yt-dlp', purpose: t('Lädt Videos herunter'), required: true, versionArg: '--version', install: 'winget install yt-dlp.yt-dlp' },
+  { id: 'ffmpeg', exe: 'ffmpeg', label: 'FFmpeg', purpose: t('Schneidet und konvertiert Videos'), required: true, versionArg: '-version', install: 'winget install Gyan.FFmpeg' },
+  { id: 'ffprobe', exe: 'ffprobe', label: 'ffprobe', purpose: t('Liest Videoinformationen (gehört zu FFmpeg)'), required: true, versionArg: '-version', install: 'winget install Gyan.FFmpeg' },
+  { id: 'deno', exe: 'deno', label: 'Deno', purpose: t('Wird für YouTube-Downloads gebraucht'), required: false, versionArg: '--version', install: 'winget install DenoLand.Deno' },
   // Normale FFmpeg-Versionen können beim Laden von Abschnitten aus YouTube hängen bleiben.
-  { id: 'ffmpegDownload', exe: 'ffmpeg', packagePrefix: 'yt-dlp.FFmpeg', label: 'FFmpeg für yt-dlp', purpose: 'Wird für das Laden von Abschnitten gebraucht', required: false, versionArg: '-version', install: 'winget install yt-dlp.FFmpeg' },
+  { id: 'ffmpegDownload', exe: 'ffmpeg', packagePrefix: 'yt-dlp.FFmpeg', label: t('FFmpeg für yt-dlp'), purpose: t('Wird für das Laden von Abschnitten gebraucht'), required: false, versionArg: '-version', install: 'winget install yt-dlp.FFmpeg' },
 ];
 
 function exec(command, args) {

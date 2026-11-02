@@ -5,6 +5,7 @@ const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
+const { t } = require('../core/i18n');
 
 const MB = 1024 * 1024;
 const SIZE_MARGIN = 0.96; // Etwas Luft für den Dateikopf, damit die Zielgröße sicher hält.
@@ -61,7 +62,7 @@ function planTargetSize(options, media) {
   const videoKbps = Math.floor(totalKbps - audioKbps);
   if (videoKbps < MIN_VIDEO_KBPS) {
     const minimum = Math.ceil(((MIN_VIDEO_KBPS + audioKbps) * 1000 * media.duration) / 8 / MB / SIZE_MARGIN);
-    throw new UserError(`Die Zielgröße ist für diese Länge zu klein. Nötig sind mindestens ${minimum} MB.`);
+    throw new UserError(t('Die Zielgröße ist für diese Länge zu klein. Nötig sind mindestens {minimum} MB.', { minimum }));
   }
   const autoHeight = options.height ? null : fittingHeight(media, videoKbps, options.portrait);
   return { videoKbps, audioKbps, autoHeight };
@@ -70,20 +71,20 @@ function planTargetSize(options, media) {
 function buildPlan(options, media) {
   const audioFormat = AUDIO_FORMATS[options.format];
   const videoFormat = VIDEO_FORMATS[options.format];
-  if (!audioFormat && !videoFormat) throw new UserError('Dieses Format wird nicht unterstützt.');
-  if (videoFormat && !media.hasVideo) throw new UserError('Diese Datei enthält kein Video. Wähle bitte ein Audioformat.');
-  if (audioFormat && !media.hasAudio) throw new UserError('Diese Datei enthält keine Tonspur.');
+  if (!audioFormat && !videoFormat) throw new UserError(t('Dieses Format wird nicht unterstützt.'));
+  if (videoFormat && !media.hasVideo) throw new UserError(t('Diese Datei enthält kein Video. Wähle bitte ein Audioformat.'));
+  if (audioFormat && !media.hasAudio) throw new UserError(t('Diese Datei enthält keine Tonspur.'));
 
   const wantsSize = Boolean(options.targetSizeMb);
-  if (wantsSize && !(options.targetSizeMb > 0)) throw new UserError('Bitte gib eine gültige Zielgröße ein.');
+  if (wantsSize && !(options.targetSizeMb > 0)) throw new UserError(t('Bitte gib eine gültige Zielgröße ein.'));
   if (wantsSize && audioFormat && !audioFormat.sizable) {
-    throw new UserError('WAV und FLAC können nicht auf eine Zielgröße komprimiert werden.');
+    throw new UserError(t('WAV und FLAC können nicht auf eine Zielgröße komprimiert werden.'));
   }
 
   const sameFormat = path.extname(media.path).slice(1).toLowerCase() === options.format;
   const changesPicture = Boolean(videoFormat && (options.height || options.portrait));
   if (wantsSize && !changesPicture && sameFormat && media.size <= options.targetSizeMb * MB) {
-    throw new UserError('Die Datei ist bereits kleiner als die Zielgröße.');
+    throw new UserError(t('Die Datei ist bereits kleiner als die Zielgröße.'));
   }
 
   const size = wantsSize ? planTargetSize(options, media) : {};
@@ -107,15 +108,15 @@ function buildPlan(options, media) {
 function describePlan(plan) {
   if (plan.isAudio) {
     return plan.audioKbps
-      ? `Tonspur wird mit ${plan.audioKbps} kbit/s gespeichert.`
-      : 'Die Tonspur wird als Audiodatei gespeichert.';
+      ? t('Tonspur wird mit {kbps} kbit/s gespeichert.', { kbps: plan.audioKbps })
+      : t('Die Tonspur wird als Audiodatei gespeichert.');
   }
-  if (!plan.encodeVideo && plan.copyAudio) return 'Wird nur umverpackt. Das dauert Sekunden und die Qualität bleibt gleich.';
-  if (!plan.encodeVideo) return 'Das Bild bleibt unverändert, nur der Ton wird neu kodiert.';
+  if (!plan.encodeVideo && plan.copyAudio) return t('Wird nur umverpackt. Das dauert Sekunden und die Qualität bleibt gleich.');
+  if (!plan.encodeVideo) return t('Das Bild bleibt unverändert, nur der Ton wird neu kodiert.');
 
-  const parts = ['Wird neu kodiert. Das kann je nach Länge dauern.'];
-  if (plan.videoKbps) parts.push(`Videobitrate etwa ${plan.videoKbps} kbit/s.`);
-  if (plan.autoHeight) parts.push(`Für brauchbare Bildqualität wird auf ${plan.autoHeight}p verkleinert.`);
+  const parts = [t('Wird neu kodiert. Das kann je nach Länge dauern.')];
+  if (plan.videoKbps) parts.push(t('Videobitrate etwa {kbps} kbit/s.', { kbps: plan.videoKbps }));
+  if (plan.autoHeight) parts.push(t('Für brauchbare Bildqualität wird auf {height}p verkleinert.', { height: plan.autoHeight }));
   return parts.join(' ');
 }
 
@@ -162,7 +163,7 @@ function register({ ipcMain, queue, tools }) {
     return runFfmpeg(ffmpeg(), ['-i', media.path, '-vn', '-map', '0:a:0', '-c:a', format.codec, ...quality, output], {
       duration: media.duration,
       signal: job.signal,
-      onProgress: (part) => job.update({ progress: part * 100, detail: 'Konvertiert' }),
+      onProgress: (part) => job.update({ progress: part * 100, detail: t('Konvertiert') }),
     });
   }
 
@@ -174,7 +175,7 @@ function register({ ipcMain, queue, tools }) {
     ], {
       duration: media.duration,
       signal: job.signal,
-      onProgress: (part) => job.update({ progress: part * 100, detail: 'Konvertiert' }),
+      onProgress: (part) => job.update({ progress: part * 100, detail: t('Konvertiert') }),
     });
   }
 
@@ -190,12 +191,12 @@ function register({ ipcMain, queue, tools }) {
 
     await runFfmpeg(ffmpeg(), [
       ...common, '-pass', '1', '-passlogfile', logFile, '-an', '-f', 'null', 'NUL',
-    ], options(0, `Analysiert (Durchgang 1 von 2${note})`));
+    ], options(0, t('Analysiert (Durchgang 1 von 2{note})', { note })));
 
     await runFfmpeg(ffmpeg(), [
       ...common, '-map', '0:a:0?', '-pass', '2', '-passlogfile', logFile,
       ...audioCodecArgs(plan), ...containerArgs(plan), output,
-    ], options(50, `Komprimiert (Durchgang 2 von 2${note})`));
+    ], options(50, t('Komprimiert (Durchgang 2 von 2{note})', { note })));
   }
 
   // Schwieriges Material kann über der Zielgröße landen. Dann läuft es mit weniger Bitrate erneut
@@ -205,7 +206,7 @@ function register({ ipcMain, queue, tools }) {
     let { videoKbps, height } = plan;
 
     for (let attempt = 1; attempt <= MAX_SIZE_ATTEMPTS && videoKbps >= MIN_VIDEO_KBPS; attempt += 1) {
-      const note = attempt > 1 ? `, Versuch ${attempt} von ${MAX_SIZE_ATTEMPTS}` : '';
+      const note = attempt > 1 ? t(', Versuch {attempt} von {total}', { attempt, total: MAX_SIZE_ATTEMPTS }) : '';
       await runTwoPass(media, { ...plan, videoKbps, height }, output, tempDir, job, note);
       const { size } = await fs.stat(output);
       if (size <= targetBytes) return;
@@ -216,7 +217,7 @@ function register({ ipcMain, queue, tools }) {
         height = STANDARD_HEIGHTS.find((step) => step < current) ?? current;
       }
     }
-    throw new UserError('Die Zielgröße wurde nicht erreicht. Wähle bitte eine größere Zielgröße oder eine kleinere Auflösung.');
+    throw new UserError(t('Die Zielgröße wurde nicht erreicht. Wähle bitte eine größere Zielgröße oder eine kleinere Auflösung.'));
   }
 
   async function runConvert(options, media, plan, job) {
@@ -229,7 +230,7 @@ function register({ ipcMain, queue, tools }) {
       else if (plan.videoKbps) await runCompressed(media, plan, output, tempDir, job, options);
       else await runSinglePass(media, plan, output, job);
 
-      const suffix = options.targetSizeMb ? 'komprimiert' : 'konvertiert';
+      const suffix = options.targetSizeMb ? t('komprimiert') : t('konvertiert');
       return await moveFile(output, options.folder, `${baseName} (${suffix}).${plan.format}`);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
@@ -249,7 +250,7 @@ function register({ ipcMain, queue, tools }) {
     try {
       const media = await probeMedia(tools.path('ffprobe'), options.filePath);
       const plan = buildPlan(options, media);
-      if (!options.folder) throw new UserError('Bitte wähle einen Zielordner.');
+      if (!options.folder) throw new UserError(t('Bitte wähle einen Zielordner.'));
       queue.add({
         title: media.name,
         kind: 'convert',

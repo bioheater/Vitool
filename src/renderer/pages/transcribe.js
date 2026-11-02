@@ -2,49 +2,51 @@
 import { el, pageHeader } from '../utils/dom.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
+import { createSendTo } from '../components/send-to.js';
 import { MediaPlayer } from '../components/media-player.js';
+import { t, formatNumber, LANGUAGE } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
 const LANGUAGES = [
-  ['', 'Automatisch erkennen'],
-  ['de', 'Deutsch'],
-  ['en', 'Englisch'],
-  ['fr', 'Französisch'],
-  ['es', 'Spanisch'],
-  ['it', 'Italienisch'],
-  ['nl', 'Niederländisch'],
-  ['pl', 'Polnisch'],
-  ['pt', 'Portugiesisch'],
-  ['tr', 'Türkisch'],
-  ['ru', 'Russisch'],
-  ['uk', 'Ukrainisch'],
-  ['ar', 'Arabisch'],
-  ['ja', 'Japanisch'],
-  ['zh', 'Chinesisch'],
+  ['', t('Automatisch erkennen')],
+  ['de', t('Deutsch')],
+  ['en', t('Englisch')],
+  ['fr', t('Französisch')],
+  ['es', t('Spanisch')],
+  ['it', t('Italienisch')],
+  ['nl', t('Niederländisch')],
+  ['pl', t('Polnisch')],
+  ['pt', t('Portugiesisch')],
+  ['tr', t('Türkisch')],
+  ['ru', t('Russisch')],
+  ['uk', t('Ukrainisch')],
+  ['ar', t('Arabisch')],
+  ['ja', t('Japanisch')],
+  ['zh', t('Chinesisch')],
 ];
 const LANGUAGE_NAMES = Object.fromEntries(LANGUAGES.filter(([code]) => code));
 
 const EXPORTS = [
-  { format: 'srt', text: 'SRT', hint: 'Untertitel für Player und Schnittprogramme' },
-  { format: 'vtt', text: 'VTT', hint: 'Untertitel fürs Web' },
-  { format: 'txt', text: 'Text', hint: 'Fließtext in Absätzen' },
-  { format: 'timed', text: 'Text mit Zeiten', hint: 'Jeder Satz mit Zeitangabe' },
-  { format: 'json', text: 'JSON', hint: 'Mit Wortzeiten, zum Weiterverarbeiten' },
+  { format: 'srt', text: 'SRT', hint: t('Untertitel für Player und Schnittprogramme') },
+  { format: 'vtt', text: 'VTT', hint: t('Untertitel fürs Web') },
+  { format: 'txt', text: t('Text'), hint: t('Fließtext in Absätzen') },
+  { format: 'timed', text: t('Text mit Zeiten'), hint: t('Jeder Satz mit Zeitangabe') },
+  { format: 'json', text: 'JSON', hint: t('Mit Wortzeiten, zum Weiterverarbeiten') },
 ];
 
 const STYLE_CHOICES = [
-  { value: 'classic', text: 'Klassisch' },
+  { value: 'classic', text: t('Klassisch') },
   { value: 'box', text: 'Box' },
-  { value: 'highlight', text: 'Wort für Wort' },
+  { value: 'highlight', text: t('Wort für Wort') },
   { value: 'pop', text: 'Pop' },
 ];
 const ACCENTS = [
-  ['#FFD400', 'Gelb'],
-  ['#3DDC97', 'Grün'],
-  ['#2FC6E8', 'Türkis'],
-  ['#FF4FA3', 'Pink'],
-  ['#FF7A1A', 'Orange'],
+  ['#FFD400', t('Gelb')],
+  ['#3DDC97', t('Grün')],
+  ['#2FC6E8', t('Türkis')],
+  ['#FF4FA3', t('Pink')],
+  ['#FF7A1A', t('Orange')],
 ];
 
 const state = {
@@ -78,42 +80,42 @@ async function act(channel, ...args) {
 function modelCard(model) {
   const selected = state.status.selected === model.id;
   const action = model.downloaded
-    ? el('button', { class: 'button small', onclick: () => confirmRemoveModel(model) }, 'Entfernen')
-    : el('button', { class: 'button small', onclick: () => act('transcribe:downloadModel', model.id) }, 'Herunterladen');
+    ? el('button', { class: 'button small', onclick: () => confirmRemoveModel(model) }, t('Entfernen'))
+    : el('button', { class: 'button small', onclick: () => act('transcribe:downloadModel', model.id) }, t('Herunterladen'));
 
   return el('div', { class: `model-card ${selected ? 'active' : ''}` },
-    el('strong', {}, model.label, model.recommended ? el('span', { class: 'model-tag' }, 'Empfohlen') : null),
+    el('strong', {}, model.label, model.recommended ? el('span', { class: 'model-tag' }, t('Empfohlen')) : null),
     el('span', { class: 'muted' }, model.text),
-    el('span', { class: 'muted' }, model.sizeMb >= 1000 ? `${(model.sizeMb / 1000).toFixed(1).replace('.', ',')} GB` : `${model.sizeMb} MB`),
+    el('span', { class: 'muted' }, model.sizeMb >= 1000 ? `${formatNumber(model.sizeMb / 1000)} GB` : `${model.sizeMb} MB`),
     el('div', { class: 'marker-row' },
       model.downloaded ? el('button', {
         class: `flag ${selected ? 'active' : ''}`,
         onclick: () => act('transcribe:selectModel', model.id),
-      }, selected ? 'Ausgewählt' : 'Auswählen') : null,
+      }, selected ? t('Ausgewählt') : t('Auswählen')) : null,
       action),
   );
 }
 
 function confirmRemoveModel(model) {
-  if (window.confirm(`Modell ${model.label} wirklich entfernen?`)) act('transcribe:removeModel', model.id);
+  if (window.confirm(t('Modell {name} wirklich entfernen?', { name: model.label }))) act('transcribe:removeModel', model.id);
 }
 
 function confirmUninstall() {
-  if (window.confirm('Die Transkription mit allen Sprachmodellen wirklich vollständig entfernen?')) act('transcribe:uninstall');
+  if (window.confirm(t('Die Transkription mit allen Sprachmodellen wirklich vollständig entfernen?'))) act('transcribe:uninstall');
 }
 
 function installRequirements(status) {
   if (!status.checked) {
     return [
-      el('p', { class: 'muted' }, 'Grafikkarte und Python werden geprüft …'),
-      el('div', {}, el('button', { class: 'button primary', disabled: true }, 'Transkription installieren')),
+      el('p', { class: 'muted' }, t('Grafikkarte und Python werden geprüft …')),
+      el('div', {}, el('button', { class: 'button primary', disabled: true }, t('Transkription installieren'))),
     ];
   }
   return [
-    el('p', { class: 'muted' }, status.gpu ? `Grafikkarte erkannt: ${status.gpu}` : 'Keine NVIDIA-Grafikkarte erkannt. Die Erkennung läuft dann über den Prozessor und dauert länger.'),
+    el('p', { class: 'muted' }, status.gpu ? t('Grafikkarte erkannt: {name}', { name: status.gpu }) : t('Keine NVIDIA-Grafikkarte erkannt. Die Erkennung läuft dann über den Prozessor und dauert länger.')),
     status.python
-      ? el('div', {}, el('button', { class: 'button primary', onclick: () => act('transcribe:install') }, 'Transkription installieren'))
-      : el('p', { class: 'message' }, 'Dafür wird Python 3.10 oder neuer gebraucht. Installiere es mit: winget install Python.Python.3.12'),
+      ? el('div', {}, el('button', { class: 'button primary', onclick: () => act('transcribe:install') }, t('Transkription installieren')))
+      : el('p', { class: 'message' }, t('Dafür wird Python 3.10 oder neuer gebraucht. Installiere es mit: winget install Python.Python.3.12')),
   ];
 }
 
@@ -126,20 +128,20 @@ function renderSetup() {
   parts.setup.hidden = open;
   parts.setup.replaceChildren(...[
     el('section', { class: 'card stack' },
-      el('h2', {}, status.installed ? 'Transkription' : 'Freiwilliges Zusatzpaket'),
-      el('p', { class: 'muted' }, 'Transkribieren nutzt Whisper von OpenAI in der schnellen Fassung faster-whisper. Alles läuft nur auf deinem Rechner, es wird nichts hochgeladen. Vitool funktioniert auch ohne dieses Paket vollständig.'),
+      el('h2', {}, status.installed ? t('Transkription') : t('Freiwilliges Zusatzpaket')),
+      el('p', { class: 'muted' }, t('Transkribieren nutzt Whisper von OpenAI in der schnellen Fassung faster-whisper. Alles läuft nur auf deinem Rechner, es wird nichts hochgeladen. Vitool funktioniert auch ohne dieses Paket vollständig.')),
       status.installed
         ? el('div', { class: 'marker-row' },
-          el('span', { class: 'muted' }, status.usedGb === null ? 'Installiert · Speicherbedarf wird ermittelt …' : `Installiert · belegt ${status.usedGb} GB`),
-          el('button', { class: 'button small', onclick: confirmUninstall }, 'Transkription vollständig entfernen'))
+          el('span', { class: 'muted' }, status.usedGb === null ? t('Installiert · Speicherbedarf wird ermittelt …') : t('Installiert · belegt {size} GB', { size: formatNumber(status.usedGb) })),
+          el('button', { class: 'button small', onclick: confirmUninstall }, t('Transkription vollständig entfernen')))
         : el('div', { class: 'stack' },
-          el('p', {}, `Download etwa ${String(status.installSizeGb).replace('.', ',')} GB · frei auf dem Laufwerk: ${status.freeGb} GB`),
+          el('p', {}, t('Download etwa {size} GB · frei auf dem Laufwerk: {free} GB', { size: formatNumber(status.installSizeGb), free: status.freeGb })),
           ...installRequirements(status),
         ),
     ),
     status.installed ? el('section', { class: 'card stack' },
-      el('h2', {}, 'Sprachmodell'),
-      el('p', { class: 'muted' }, 'Du kannst ein oder mehrere Modelle laden. Größere verstehen undeutliche Sprache besser, brauchen aber länger.'),
+      el('h2', {}, t('Sprachmodell')),
+      el('p', { class: 'muted' }, t('Du kannst ein oder mehrere Modelle laden. Größere verstehen undeutliche Sprache besser, brauchen aber länger.')),
       el('div', { class: 'model-grid' }, ...status.models.map(modelCard)),
     ) : null,
   ].filter(Boolean));
@@ -164,18 +166,18 @@ function renderModelSelect() {
 // Sprache, Modell und Ausgabe gibt es für eine Datei und für den Stapel.
 function settingFields() {
   const fields = {
-    language: el('select', { class: 'input', 'aria-label': 'Sprache' },
+    language: el('select', { class: 'input', 'aria-label': t('Sprache') },
       ...LANGUAGES.map(([value, text]) => el('option', { value }, text))),
-    model: el('select', { class: 'input', 'aria-label': 'Sprachmodell', onchange: () => updateTranslateHint(fields) }),
-    output: el('select', { class: 'input', 'aria-label': 'Sprache des Textes', onchange: () => updateTranslateHint(fields) },
-      el('option', { value: 'original' }, 'Gesprochener Sprache'),
-      el('option', { value: 'en' }, 'Englisch (übersetzt)')),
+    model: el('select', { class: 'input', 'aria-label': t('Sprachmodell'), onchange: () => updateTranslateHint(fields) }),
+    output: el('select', { class: 'input', 'aria-label': t('Sprache des Textes'), onchange: () => updateTranslateHint(fields) },
+      el('option', { value: 'original' }, t('Gesprochener Sprache')),
+      el('option', { value: 'en' }, t('Englisch (übersetzt)'))),
     translateHint: el('p', { class: 'muted', hidden: true }),
   };
   fields.rows = [
-    el('label', { class: 'field' }, el('span', { class: 'muted' }, 'Sprache'), fields.language),
-    el('label', { class: 'field' }, el('span', { class: 'muted' }, 'Modell'), fields.model),
-    el('label', { class: 'field' }, el('span', { class: 'muted' }, 'Text in'), fields.output),
+    el('label', { class: 'field' }, el('span', { class: 'muted' }, t('Sprache')), fields.language),
+    el('label', { class: 'field' }, el('span', { class: 'muted' }, t('Modell')), fields.model),
+    el('label', { class: 'field' }, el('span', { class: 'muted' }, t('Text in')), fields.output),
     fields.translateHint,
   ];
   return fields;
@@ -195,10 +197,10 @@ function updateTranslateHint(fields) {
   let text = '';
   if (translating && fields.model.value === 'turbo') {
     text = better.length
-      ? `Large Turbo übersetzt schlecht. Nimm dafür besser ${better.join(' oder ')}.`
-      : 'Large Turbo übersetzt schlecht. Lade dafür besser das Modell Medium oder Large.';
+      ? t('Large Turbo übersetzt schlecht. Nimm dafür besser {models}.', { models: better.join(t(' oder ')) })
+      : t('Large Turbo übersetzt schlecht. Lade dafür besser das Modell Medium oder Large.');
   } else if (translating) {
-    text = 'Whisper übersetzt aus jeder Sprache ins Englische. Andere Zielsprachen kann es nicht.';
+    text = t('Whisper übersetzt aus jeder Sprache ins Englische. Andere Zielsprachen kann es nicht.');
   }
   fields.translateHint.textContent = text;
   fields.translateHint.hidden = !text;
@@ -217,7 +219,7 @@ async function openFile(filePath) {
     return;
   }
   if (!response.media.hasAudio) {
-    setMessage('Diese Datei hat keine Tonspur.');
+    setMessage(t('Diese Datei hat keine Tonspur.'));
     return;
   }
   showMedia(response.media);
@@ -225,6 +227,9 @@ async function openFile(filePath) {
 
 function showWorkspace(name, info) {
   state.transcript = null;
+  state.batch = null;
+  parts.batch.hidden = true;
+  parts.sendTo.hidden = Boolean(state.link);
   parts.name.textContent = name;
   parts.info.textContent = info;
   parts.start.disabled = !state.media;
@@ -273,20 +278,20 @@ function addToBatch(paths) {
 
 function renderBatch() {
   const count = state.batch.length;
-  parts.batchTitle.textContent = `Stapel: ${count} ${count === 1 ? 'Datei' : 'Dateien'}`;
+  parts.batchTitle.textContent = count === 1 ? t('Stapel: 1 Datei') : t('Stapel: {count} Dateien', { count });
   parts.batchList.replaceChildren(...state.batch.map((filePath) => el('li', { class: 'batch-item' },
     el('span', { class: 'batch-name', title: filePath }, filePath.split(/[\\/]/).pop()),
     el('button', {
       class: 'object-remove',
-      title: 'Aus dem Stapel nehmen',
-      'aria-label': 'Aus dem Stapel nehmen',
+      title: t('Aus dem Stapel nehmen'),
+      'aria-label': t('Aus dem Stapel nehmen'),
       onclick: () => {
         state.batch = state.batch.filter((entry) => entry !== filePath);
         if (state.batch.length === 0) closeBatch();
         else renderBatch();
       },
     }, '×'))));
-  parts.batchStart.textContent = `Alle transkribieren (${count})`;
+  parts.batchStart.textContent = t('Alle transkribieren ({count})', { count });
   parts.batchStart.disabled = count === 0 || !parts.formatChecks.some((check) => check.checked);
 }
 
@@ -306,7 +311,7 @@ async function startBatch() {
   }
   closeBatch();
   setMessage('');
-  parts.notice.textContent = `${response.count} Dateien sind in der Warteschlange und werden nacheinander transkribiert. Die Ergebnisse landen neben den Originaldateien.`;
+  parts.notice.textContent = t('{count} Dateien sind in der Warteschlange und werden nacheinander transkribiert. Die Ergebnisse landen neben den Originaldateien.', { count: response.count });
   parts.notice.hidden = false;
 }
 
@@ -323,18 +328,18 @@ function buildBatch() {
   parts.batch = el('div', { class: 'stack', hidden: true },
     el('section', { class: 'card stack' },
       el('div', { class: 'section-head' }, parts.batchTitle,
-        el('button', { class: 'button small', onclick: closeBatch }, 'Abbrechen')),
+        el('button', { class: 'button small', onclick: closeBatch }, t('Abbrechen'))),
       parts.batchList,
       el('div', { class: 'marker-row' },
-        el('button', { class: 'button small', onclick: async () => addToBatch(await invoke('dialog:pickVideos')) }, 'Dateien hinzufügen'),
-        el('button', { class: 'button small', onclick: pickFolder }, 'Ordner hinzufügen')),
+        el('button', { class: 'button small', onclick: async () => addToBatch(await invoke('dialog:pickVideos')) }, t('Dateien hinzufügen')),
+        el('button', { class: 'button small', onclick: pickFolder }, t('Ordner hinzufügen'))),
     ),
     el('section', { class: 'card stack' },
-      el('h2', {}, 'Einstellungen für alle'),
+      el('h2', {}, t('Einstellungen für alle')),
       ...parts.batchFields.rows,
-      el('p', { class: 'muted' }, 'Speichern als'),
+      el('p', { class: 'muted' }, t('Speichern als')),
       el('div', { class: 'format-checks' }, ...EXPORTS.map(({ text }, index) => el('label', { class: 'check' }, parts.formatChecks[index], el('span', {}, text)))),
-      el('p', { class: 'muted' }, 'Die Dateien landen neben den Originalen, vorhandene werden nicht überschrieben. Die Transkriptionen laufen nacheinander.'),
+      el('p', { class: 'muted' }, t('Die Dateien landen neben den Originalen, vorhandene werden nicht überschrieben. Die Transkriptionen laufen nacheinander.')),
       el('div', {}, parts.batchStart),
     ),
   );
@@ -345,7 +350,7 @@ function showMedia(media) {
   state.link = null;
   state.media = media;
   playLocal(media);
-  const details = media.hasVideo ? `${media.width} × ${media.height}` : 'nur Ton';
+  const details = media.hasVideo ? `${media.width} × ${media.height}` : t('nur Ton');
   showWorkspace(media.name, `${formatTime(media.duration)} · ${details}`);
 }
 
@@ -391,21 +396,21 @@ async function loadLink() {
   if (!url) return;
   setMessage('');
   parts.loadLink.disabled = true;
-  parts.loadLink.textContent = 'Prüft Link …';
+  parts.loadLink.textContent = t('Prüft Link …');
   const infoResponse = await invoke('download:info', url);
   parts.loadLink.disabled = false;
-  parts.loadLink.textContent = 'Laden und transkribieren';
+  parts.loadLink.textContent = t('Laden und transkribieren');
   if (!infoResponse.ok) {
     setMessage(infoResponse.error);
     return;
   }
   const { info } = infoResponse;
   if (info.isLive) {
-    setMessage('Livestreams können nicht transkribiert werden.');
+    setMessage(t('Livestreams können nicht transkribiert werden.'));
     return;
   }
   if (info.playlist === 'only' && !info.duration) {
-    setMessage('Das ist eine Playlist. Füge bitte den Link zu einem einzelnen Video ein.');
+    setMessage(t('Das ist eine Playlist. Füge bitte den Link zu einem einzelnen Video ein.'));
     return;
   }
 
@@ -414,17 +419,17 @@ async function loadLink() {
   state.link = info;
   startLinkPreview(info);
   const length = info.duration ? `${formatTime(info.duration)} · ` : '';
-  showWorkspace(info.title, `${length}aus Link · Ton wird geladen …`);
+  showWorkspace(info.title, `${length}${t('aus Link · Ton wird geladen …')}`);
 
   const response = await invoke('transcribe:fromLink', info.url);
   if (state.link !== info) return;
   if (!response.ok) {
-    parts.info.textContent = `${length}aus Link`;
-    setMessage(response.error ?? 'Abgebrochen. Füge den Link erneut ein, um es noch einmal zu versuchen.');
+    parts.info.textContent = `${length}${t('aus Link')}`;
+    setMessage(response.error ?? t('Abgebrochen. Füge den Link erneut ein, um es noch einmal zu versuchen.'));
     return;
   }
   state.media = response.media;
-  parts.info.textContent = `${formatTime(state.media.duration)} · aus Link`;
+  parts.info.textContent = `${formatTime(state.media.duration)} · ${t('aus Link')}`;
   if (!state.previewing) playLocal(state.media);
   start();
 }
@@ -446,12 +451,12 @@ async function start() {
   setMessage('');
   state.running = true;
   parts.start.disabled = true;
-  parts.start.textContent = 'Läuft …';
+  parts.start.textContent = t('Läuft …');
   const filePath = state.media.path;
   const response = await invoke('transcribe:start', { filePath, ...optionsFrom(parts.fields) });
   state.running = false;
   parts.start.disabled = false;
-  parts.start.textContent = 'Transkribieren';
+  parts.start.textContent = t('Transkribieren');
   if (state.media?.path !== filePath) return;
   if (!response.ok) {
     if (response.error) setMessage(response.error);
@@ -464,9 +469,13 @@ async function start() {
 function summary(transcript) {
   const words = transcript.segments.reduce((sum, segment) => sum + segment.text.split(/\s+/).filter(Boolean).length, 0);
   const language = LANGUAGE_NAMES[transcript.language] ?? transcript.language;
-  const device = transcript.device === 'cuda' ? 'Grafikkarte' : 'Prozessor';
-  const spoken = transcript.translated ? `ins Englische übersetzt (gesprochen: ${language})` : `Sprache: ${language}`;
-  return `${transcript.segments.length} Abschnitte · ${words} Wörter · ${spoken} · erkannt mit ${device}`;
+  const device = transcript.device === 'cuda' ? t('erkannt mit Grafikkarte') : t('erkannt mit Prozessor');
+  const spoken = transcript.translated
+    ? t('ins Englische übersetzt (gesprochen: {language})', { language })
+    : t('Sprache: {language}', { language });
+  const segments = transcript.segments.length === 1 ? t('1 Abschnitt') : t('{count} Abschnitte', { count: transcript.segments.length });
+  const wordCount = words === 1 ? t('1 Wort') : t('{count} Wörter', { count: words });
+  return `${segments} · ${wordCount} · ${spoken} · ${device}`;
 }
 
 function segmentRow(segment) {
@@ -474,7 +483,7 @@ function segmentRow(segment) {
     class: 'transcript-text',
     contentEditable: 'plaintext-only',
     spellcheck: false,
-    'aria-label': `Text ab ${formatTime(segment.start)}`,
+    'aria-label': t('Text ab {time}', { time: formatTime(segment.start) }),
     oninput: () => {
       segment.text = text.textContent.replace(/\s+/g, ' ').trim();
       segment.edited = true;
@@ -487,7 +496,7 @@ function segmentRow(segment) {
   }, segment.text);
   const time = el('button', {
     class: 'transcript-time',
-    title: 'Im Video an diese Stelle springen',
+    title: t('Im Video an diese Stelle springen'),
     onclick: () => {
       player.video.currentTime = segment.start;
     },
@@ -500,11 +509,11 @@ function renderResult() {
   parts.resultCards.forEach((card) => {
     card.hidden = !transcript;
   });
-  parts.start.textContent = transcript ? 'Neu transkribieren' : 'Transkribieren';
+  parts.start.textContent = transcript ? t('Neu transkribieren') : t('Transkribieren');
   rows = transcript?.segments.map(segmentRow) ?? [];
   if (transcript) parts.summary.textContent = summary(transcript);
   if (transcript?.segments.length === 0) {
-    parts.list.replaceChildren(el('p', { class: 'muted' }, 'Es wurde keine Sprache erkannt.'));
+    parts.list.replaceChildren(el('p', { class: 'muted' }, t('Es wurde keine Sprache erkannt.')));
   } else {
     parts.list.replaceChildren(...rows);
   }
@@ -539,7 +548,7 @@ function runSearch() {
 function renderSearchCount() {
   const query = parts.search.value.trim();
   const count = search.hits.length;
-  parts.searchCount.textContent = !query ? '' : count === 0 ? 'Keine Treffer' : `${search.position + 1 || '–'} von ${count}`;
+  parts.searchCount.textContent = !query ? '' : count === 0 ? t('Keine Treffer') : t('{position} von {count}', { position: search.position + 1 || '–', count });
   parts.searchPrev.disabled = count === 0;
   parts.searchNext.disabled = count === 0;
 }
@@ -595,8 +604,8 @@ async function save(format) {
   }
   if (!response.path) return;
   parts.saved.replaceChildren(
-    el('span', { class: 'muted' }, `Gespeichert: ${response.path}`),
-    el('button', { class: 'button small', onclick: () => invoke('shell:showFile', response.path) }, 'Im Ordner zeigen'),
+    el('span', { class: 'muted' }, t('Gespeichert: {path}', { path: response.path })),
+    el('button', { class: 'button small', onclick: () => invoke('shell:showFile', response.path) }, t('Im Ordner zeigen')),
   );
   parts.saved.hidden = false;
 }
@@ -630,10 +639,10 @@ function renderBurn() {
   parts.burnCard.hidden = !ready;
   parts.burnButton.disabled = !ready || noPicture;
   parts.burnHint.textContent = noPicture
-    ? 'Diese Datei hat kein Bild. Einbrennen geht nur bei Videos.'
+    ? t('Diese Datei hat kein Bild. Einbrennen geht nur bei Videos.')
     : state.media?.fromLink
-      ? 'Dafür wird das Video heruntergeladen (höchstens 1080p). Das fertige Video landet in deinem Download-Ordner.'
-      : 'Das fertige Video landet neben dem Original.';
+      ? t('Dafür wird das Video heruntergeladen (höchstens 1080p). Das fertige Video landet in deinem Download-Ordner.')
+      : t('Das fertige Video landet neben dem Original.');
   parts.styleTiles.forEach((tile) => tile.classList.toggle('active', tile.dataset.style === state.burn.style));
   parts.swatches.forEach((swatch) => swatch.classList.toggle('active', swatch.dataset.color === state.burn.color));
   parts.colorRow.hidden = !['highlight', 'pop'].includes(state.burn.style);
@@ -742,7 +751,7 @@ async function burn() {
     setMessage(response.error);
     return;
   }
-  parts.burnHint.textContent = 'Läuft in der Warteschlange. Dort findest du danach auch „Im Ordner zeigen“.';
+  parts.burnHint.textContent = t('Läuft in der Warteschlange. Dort findest du danach auch „Im Ordner zeigen“.');
 }
 
 function buildBurnCard() {
@@ -750,21 +759,21 @@ function buildBurnCard() {
     class: 'style-tile',
     'data-style': value,
     onclick: () => setBurn({ style: value }),
-  }, el('span', { class: `style-sample sample-${value}` }, value === 'pop' ? 'HALLO' : value === 'highlight' ? el('span', {}, el('em', {}, 'Hallo'), ' du') : 'Hallo'), el('span', { class: 'muted' }, text)));
+  }, el('span', { class: `style-sample sample-${value}` }, value === 'pop' ? t('Hallo').toLocaleUpperCase(LANGUAGE) : value === 'highlight' ? el('span', {}, el('em', {}, t('Hallo')), ` ${t('du')}`) : t('Hallo')), el('span', { class: 'muted' }, text)));
   parts.swatches = ACCENTS.map(([color, text]) => {
     const swatch = el('button', {
       class: 'swatch',
       'data-color': color,
       title: text,
-      'aria-label': `Farbe ${text}`,
+      'aria-label': t('Farbe {name}', { name: text }),
       onclick: () => setBurn({ color }),
     });
     swatch.style.setProperty('--swatch', color);
     return swatch;
   });
-  parts.colorRow = el('div', { class: 'marker-row' }, el('span', { class: 'muted slider-label' }, 'Farbe'), ...parts.swatches);
+  parts.colorRow = el('div', { class: 'marker-row' }, el('span', { class: 'muted slider-label' }, t('Farbe')), ...parts.swatches);
   parts.burnHint = el('p', { class: 'muted' });
-  parts.burnButton = el('button', { class: 'button primary', onclick: burn }, 'Video mit Untertiteln erstellen');
+  parts.burnButton = el('button', { class: 'button primary', onclick: burn }, t('Video mit Untertiteln erstellen'));
   const preview = el('input', {
     type: 'checkbox',
     checked: state.burn.preview,
@@ -772,14 +781,14 @@ function buildBurnCard() {
   });
 
   parts.burnCard = el('section', { class: 'card stack', hidden: true },
-    el('h2', {}, 'Untertitel einbrennen'),
+    el('h2', {}, t('Untertitel einbrennen')),
     el('div', { class: 'style-grid' }, ...parts.styleTiles),
-    el('div', { class: 'marker-row' }, el('span', { class: 'muted slider-label' }, 'Position'),
-      choice('Position', [{ value: 'bottom', text: 'Unten' }, { value: 'middle', text: 'Mitte' }, { value: 'top', text: 'Oben' }], state.burn.position, (position) => setBurn({ position }))),
-    el('div', { class: 'marker-row' }, el('span', { class: 'muted slider-label' }, 'Größe'),
-      choice('Größe', [{ value: 'small', text: 'Klein' }, { value: 'medium', text: 'Mittel' }, { value: 'large', text: 'Groß' }], state.burn.size, (size) => setBurn({ size }))),
+    el('div', { class: 'marker-row' }, el('span', { class: 'muted slider-label' }, t('Position')),
+      choice(t('Position'), [{ value: 'bottom', text: t('Unten') }, { value: 'middle', text: t('Mitte') }, { value: 'top', text: t('Oben') }], state.burn.position, (position) => setBurn({ position }))),
+    el('div', { class: 'marker-row' }, el('span', { class: 'muted slider-label' }, t('Größe')),
+      choice(t('Größe'), [{ value: 'small', text: t('Klein') }, { value: 'medium', text: t('Mittel') }, { value: 'large', text: t('Groß') }], state.burn.size, (size) => setBurn({ size }))),
     parts.colorRow,
-    el('label', { class: 'check' }, preview, el('span', {}, 'Vorschau im Video zeigen')),
+    el('label', { class: 'check' }, preview, el('span', {}, t('Vorschau im Video zeigen'))),
     parts.burnHint,
     el('div', {}, parts.burnButton),
   );
@@ -796,37 +805,37 @@ function buildPage(root) {
     setup: el('div', { class: 'stack' }),
     drop: createFileDrop({
       onFiles: openFiles,
-      title: 'Video oder Audio hierher ziehen',
-      hint: 'oder klicken, um auszuwählen. Mehrere Dateien werden nacheinander transkribiert.',
+      title: t('Video oder Audio hierher ziehen'),
+      hint: t('oder klicken, um auszuwählen. Mehrere Dateien werden nacheinander transkribiert.'),
       features: [
-        { iconName: 'transcribe', title: 'Gesprochenes erkennen', text: 'Auch mit Satzzeichen und Wortzeiten' },
-        { iconName: 'globe', title: 'Viele Sprachen', text: 'Die Sprache wird automatisch erkannt' },
-        { iconName: 'file', title: 'Untertitel oder Text', text: 'SRT, VTT, Text oder JSON speichern' },
+        { iconName: 'transcribe', title: t('Gesprochenes erkennen'), text: t('Auch mit Satzzeichen und Wortzeiten') },
+        { iconName: 'globe', title: t('Viele Sprachen'), text: t('Die Sprache wird automatisch erkannt') },
+        { iconName: 'file', title: t('Untertitel oder Text'), text: t('SRT, VTT, Text oder JSON speichern') },
       ],
     }),
     url: el('input', {
       class: 'input grow',
-      placeholder: 'Link einfügen, zum Beispiel von YouTube, Instagram oder TikTok',
-      'aria-label': 'Link zum Video',
+      placeholder: t('Link einfügen, zum Beispiel von YouTube, Instagram oder TikTok'),
+      'aria-label': t('Link zum Video'),
       spellcheck: false,
       onkeydown: (event) => {
         if (event.key === 'Enter') loadLink();
       },
     }),
-    loadLink: el('button', { class: 'button primary', onclick: () => loadLink() }, 'Laden und transkribieren'),
+    loadLink: el('button', { class: 'button primary', onclick: () => loadLink() }, t('Laden und transkribieren')),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
     info: el('p', { class: 'muted' }),
     fields: settingFields(),
     batchFields: settingFields(),
-    start: el('button', { class: 'button primary', onclick: start }, 'Transkribieren'),
+    start: el('button', { class: 'button primary', onclick: start }, t('Transkribieren')),
     summary: el('p', { class: 'muted' }),
     list: el('div', { class: 'transcript-list' }),
     search: el('input', {
       class: 'input grow',
       type: 'search',
-      placeholder: 'Im Text suchen',
-      'aria-label': 'Im Text suchen',
+      placeholder: t('Im Text suchen'),
+      'aria-label': t('Im Text suchen'),
       spellcheck: false,
       oninput: runSearch,
       onkeydown: (event) => {
@@ -836,10 +845,12 @@ function buildPage(root) {
       },
     }),
     searchCount: el('span', { class: 'muted search-count' }),
-    searchPrev: el('button', { class: 'button small', title: 'Vorheriger Treffer (Umschalt+Enter)', 'aria-label': 'Vorheriger Treffer', onclick: () => jumpToHit(-1) }, '↑'),
-    searchNext: el('button', { class: 'button small', title: 'Nächster Treffer (Enter)', 'aria-label': 'Nächster Treffer', onclick: () => jumpToHit(1) }, '↓'),
+    searchPrev: el('button', { class: 'button small', title: t('Vorheriger Treffer (Umschalt+Enter)'), 'aria-label': t('Vorheriger Treffer'), onclick: () => jumpToHit(-1) }, '↑'),
+    searchNext: el('button', { class: 'button small', title: t('Nächster Treffer (Enter)'), 'aria-label': t('Nächster Treffer'), onclick: () => jumpToHit(1) }, '↓'),
     saved: el('div', { class: 'marker-row', hidden: true }),
     subOverlay: el('div', { class: 'sub-overlay', hidden: true, 'aria-hidden': 'true' }),
+    // Ton aus einem Link liegt nur vorübergehend im Temp-Ordner und wird nicht weitergegeben.
+    sendTo: createSendTo({ getPath: () => (state.media && !state.media.fromLink ? state.media.path : null), exclude: 'transcribe' }),
   };
 
   player.root.append(parts.subOverlay);
@@ -853,12 +864,12 @@ function buildPage(root) {
   window.addEventListener('resize', renderOverlay);
 
   const settingsCard = el('section', { class: 'card stack' },
-    el('h2', {}, 'Einstellungen'),
+    el('h2', {}, t('Einstellungen')),
     ...parts.fields.rows,
     el('div', {}, parts.start),
   );
   const saveCard = el('section', { class: 'card stack', hidden: true },
-    el('h2', {}, 'Speichern'),
+    el('h2', {}, t('Speichern')),
     el('div', { class: 'export-grid' }, ...EXPORTS.map(({ format, text, hint }) => el('button', {
       class: 'export-choice',
       onclick: () => save(format),
@@ -866,9 +877,9 @@ function buildPage(root) {
     parts.saved,
   );
   const textCard = el('section', { class: 'card stack transcript-card', hidden: true },
-    el('h2', {}, 'Text'),
+    el('h2', {}, t('Text')),
     parts.summary,
-    el('p', { class: 'muted' }, 'Klick auf eine Zeit springt im Video dorthin. Den Text kannst du direkt verbessern, das wird beim Speichern übernommen.'),
+    el('p', { class: 'muted' }, t('Klick auf eine Zeit springt im Video dorthin. Den Text kannst du direkt verbessern, das wird beim Speichern übernommen.')),
     el('div', { class: 'search-row' }, parts.search, parts.searchCount, parts.searchPrev, parts.searchNext),
     parts.list,
   );
@@ -877,7 +888,8 @@ function buildPage(root) {
   parts.workspace.append(
     el('section', { class: 'card file-card' },
       el('div', { class: 'video-text' }, parts.name, parts.info),
-      el('button', { class: 'button small', onclick: closeFile }, 'Andere Datei'),
+      el('div', { class: 'file-actions' }, parts.sendTo,
+        el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),
     ),
     // Der Text scrollt in sich, so bleiben Video und Text nebeneinander sichtbar.
     el('div', { class: 'ai-columns transcript-columns' },
@@ -887,17 +899,17 @@ function buildPage(root) {
   );
 
   parts.linkCard = el('section', { class: 'card stack', hidden: true },
-    el('h2', {}, 'Per Link'),
-    el('p', { class: 'muted' }, 'Es wird nur der Ton vorübergehend geladen, in deinen Downloads landet nichts.'),
+    el('h2', {}, t('Per Link')),
+    el('p', { class: 'muted' }, t('Es wird nur der Ton vorübergehend geladen, in deinen Downloads landet nichts.')),
     el('div', { class: 'url-row' }, parts.url, parts.loadLink),
   );
 
   parts.folderRow = el('div', { class: 'marker-row', hidden: true },
-    el('button', { class: 'button small', onclick: pickFolder }, 'Ganzen Ordner transkribieren'));
+    el('button', { class: 'button small', onclick: pickFolder }, t('Ganzen Ordner transkribieren')));
 
   root.classList.add('wide-page');
   root.append(
-    pageHeader('Transkribieren', 'Gesprochenes erkennen und als Untertitel oder Text speichern.'),
+    pageHeader(t('Transkribieren'), t('Gesprochenes erkennen und als Untertitel oder Text speichern.')),
     parts.message,
     parts.notice,
     // Ist alles eingerichtet, kommen Link und Datei zuerst, die Modellverwaltung darunter.
@@ -920,10 +932,15 @@ function buildPage(root) {
 
 export default {
   id: 'transcribe',
-  label: 'Transkribieren',
+  label: t('Transkribieren'),
   mount: buildPage,
-  onShow() {
-    refresh();
+  // Eine weitergegebene Datei öffnet sich nur, wenn Paket und Modell bereit sind.
+  async onShow(data) {
+    await refresh();
+    if (!data?.filePath) return;
+    const ready = state.status.installed && state.status.models.some((model) => model.downloaded);
+    if (ready) openFile(data.filePath);
+    else setMessage(t('Zum Transkribieren muss zuerst das Zusatzpaket mit einem Sprachmodell eingerichtet werden.'));
   },
   onHide() {
     player.video.pause();

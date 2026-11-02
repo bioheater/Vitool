@@ -5,6 +5,7 @@ import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
 import { MediaPlayer } from '../components/media-player.js';
+import { t, formatNumber } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
@@ -47,8 +48,8 @@ function options(item) {
 function mediaInfo(media) {
   return [
     formatTime(media.duration),
-    media.height ? `${media.width} × ${media.height}` : 'Nur Audio',
-    `${(media.size / 1024 / 1024).toFixed(1)} MB`,
+    media.height ? `${media.width} × ${media.height}` : t('Nur Audio'),
+    `${formatNumber(media.size / 1024 / 1024)} MB`,
   ].join(' · ');
 }
 
@@ -70,15 +71,16 @@ async function updatePlan() {
     setMessage(plan.ok ? state.notice : plan.error);
   } else {
     parts.summary.textContent = [
-      `${ready.length} von ${state.items.length} Dateien werden konvertiert.`,
+      t('{ready} von {total} Dateien werden konvertiert.', { ready: ready.length, total: state.items.length }),
       ready[0]?.plan.summary,
-      skipped ? `${skipped} ${skipped === 1 ? 'wird' : 'werden'} übersprungen, der Grund steht in der Liste.` : '',
+      skipped === 1 ? t('1 wird übersprungen, der Grund steht in der Liste.') : '',
+      skipped > 1 ? t('{count} werden übersprungen, der Grund steht in der Liste.', { count: skipped }) : '',
     ].filter(Boolean).join(' ');
     setMessage(state.notice);
   }
   parts.summary.hidden = !parts.summary.textContent;
   parts.start.disabled = ready.length === 0;
-  parts.start.textContent = ready.length > 1 ? `${ready.length} Dateien konvertieren` : 'Konvertieren';
+  parts.start.textContent = ready.length > 1 ? t('{count} Dateien konvertieren', { count: ready.length }) : t('Konvertieren');
   renderFileList();
 }
 
@@ -135,13 +137,13 @@ function renderCrop() {
 function renderHeader() {
   const single = state.items.length === 1;
   const [first] = state.items;
-  parts.name.textContent = single ? first.media.name : `${state.items.length} Dateien`;
+  parts.name.textContent = single ? first.media.name : t('{count} Dateien', { count: state.items.length });
   parts.name.title = single ? first.media.path : '';
   parts.info.textContent = single
     ? mediaInfo(first.media)
-    : `zusammen ${(state.items.reduce((sum, item) => sum + item.media.size, 0) / 1024 / 1024).toFixed(1)} MB`;
+    : t('zusammen {size} MB', { size: formatNumber(state.items.reduce((sum, item) => sum + item.media.size, 0) / 1024 / 1024) });
   parts.fileList.hidden = single;
-  parts.folder.textContent = state.folder ?? (single ? folderOf(first.media.path) : 'Jeweils neben der Originaldatei');
+  parts.folder.textContent = state.folder ?? (single ? folderOf(first.media.path) : t('Jeweils neben der Originaldatei'));
   parts.folder.title = parts.folder.textContent;
   parts.resetFolder.hidden = state.folder === null;
 }
@@ -150,15 +152,15 @@ function renderFileList() {
   parts.fileList.replaceChildren(...state.items.map((item) => el('li', { class: `batch-row ${item.plan && !item.plan.ok ? 'skip' : ''}` },
     el('div', { class: 'history-text' },
       el('span', { class: 'job-title', title: item.media.path }, item.media.name),
-      el('span', { class: item.plan && !item.plan.ok ? 'batch-error' : 'muted' }, item.plan && !item.plan.ok ? `Wird übersprungen: ${item.plan.error}` : mediaInfo(item.media))),
-    el('button', { class: 'button small', 'aria-label': `${item.media.name} entfernen`, onclick: () => removeItem(item) }, 'Entfernen'),
+      el('span', { class: item.plan && !item.plan.ok ? 'batch-error' : 'muted' }, item.plan && !item.plan.ok ? t('Wird übersprungen: {reason}', { reason: item.plan.error }) : mediaInfo(item.media))),
+    el('button', { class: 'button small', 'aria-label': t('{name} entfernen', { name: item.media.name }), onclick: () => removeItem(item) }, t('Entfernen')),
   )));
 }
 
 function resetOptions() {
   const maxHeight = Math.max(0, ...state.items.map((item) => item.media.height ?? 0));
   parts.resolution.replaceChildren(
-    el('option', { value: '' }, 'Original'),
+    el('option', { value: '' }, t('Original')),
     ...RESOLUTIONS.filter((height) => height < maxHeight).map((height) => el('option', { value: String(height) }, `${height}p`)),
   );
   parts.videoFormats.hidden = !state.items.some((item) => item.media.hasVideo);
@@ -179,7 +181,9 @@ async function openFiles(paths) {
   if (failed.length) {
     state.notice = fresh.length === 1
       ? failed[0].error
-      : `${failed.length} ${failed.length === 1 ? 'Datei ließ' : 'Dateien ließen'} sich nicht lesen und ${failed.length === 1 ? 'wurde' : 'wurden'} nicht übernommen.`;
+      : failed.length === 1
+        ? t('1 Datei ließ sich nicht lesen und wurde nicht übernommen.')
+        : t('{count} Dateien ließen sich nicht lesen und wurden nicht übernommen.', { count: failed.length });
     setMessage(state.notice);
   }
   if (state.items.length === 0) return;
@@ -253,7 +257,7 @@ async function startConvert() {
   } else if (ready.length === 1) {
     setMessage(failed[0].error);
   } else {
-    setMessage(`${failed.length} von ${ready.length} Dateien konnten nicht gestartet werden: ${failed[0].error}`);
+    setMessage(t('{failed} von {total} Dateien konnten nicht gestartet werden: {reason}', { failed: failed.length, total: ready.length, reason: failed[0].error }));
   }
 }
 
@@ -266,22 +270,22 @@ function buildPage(root) {
     drop: el('div', { class: 'stack' },
       createFileDrop({
         onFiles: openFiles,
-        hint: 'oder klicken, um eine oder mehrere Dateien auszuwählen',
+        hint: t('oder klicken, um eine oder mehrere Dateien auszuwählen'),
         features: [
-          { iconName: 'convert', title: 'Jedes Format', text: 'MP4, MKV, WebM, MP3, WAV und mehr' },
-          { iconName: 'shrink', title: 'Zielgröße', text: 'Zum Beispiel unter 25 MB zum Verschicken' },
-          { iconName: 'layers', title: 'Viele auf einmal', text: 'Mehrere Dateien oder einen ganzen Ordner' },
+          { iconName: 'convert', title: t('Jedes Format'), text: t('MP4, MKV, WebM, MP3, WAV und mehr') },
+          { iconName: 'shrink', title: t('Zielgröße'), text: t('Zum Beispiel unter 25 MB zum Verschicken') },
+          { iconName: 'layers', title: t('Viele auf einmal'), text: t('Mehrere Dateien oder einen ganzen Ordner') },
         ],
       }),
-      el('div', {}, el('button', { class: 'button', onclick: pickFolderFiles }, 'Ganzen Ordner auswählen'))),
+      el('div', {}, el('button', { class: 'button', onclick: pickFolderFiles }, t('Ganzen Ordner auswählen')))),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
     info: el('p', { class: 'muted' }),
     fileList: el('ul', { class: 'history-list batch-list', hidden: true }),
-    videoFormats: el('div', { class: 'segments', role: 'group', 'aria-label': 'Videoformate' }, ...VIDEO_FORMATS.map(formatButton)),
-    audioFormats: el('div', { class: 'segments', role: 'group', 'aria-label': 'Audioformate' }, ...AUDIO_FORMATS.map(formatButton)),
+    videoFormats: el('div', { class: 'segments', role: 'group', 'aria-label': t('Videoformate') }, ...VIDEO_FORMATS.map(formatButton)),
+    audioFormats: el('div', { class: 'segments', role: 'group', 'aria-label': t('Audioformate') }, ...AUDIO_FORMATS.map(formatButton)),
     videoCard: el('section', { class: 'card stack' }),
-    resolution: el('select', { class: 'input', 'aria-label': 'Auflösung', onchange: updatePlan }),
+    resolution: el('select', { class: 'input', 'aria-label': t('Auflösung'), onchange: updatePlan }),
     portrait: el('input', {
       type: 'checkbox',
       onchange: () => {
@@ -298,14 +302,14 @@ function buildPage(root) {
       min: 0,
       max: 100,
       value: 50,
-      'aria-label': 'Bildausschnitt',
+      'aria-label': t('Bildausschnitt'),
       oninput: (event) => {
         state.cropPosition = Number(event.target.value) / 100;
         renderCrop();
       },
     }),
-    cropInfo: el('p', { class: 'muted' }, 'Dieses Video ist schon schmal genug, es wird nur oben und unten beschnitten.'),
-    cropBatchHint: el('p', { class: 'muted', hidden: true }, 'Die Vorschau zeigt die erste Datei. Der Ausschnitt gilt für alle Dateien an derselben Stelle.'),
+    cropInfo: el('p', { class: 'muted' }, t('Dieses Video ist schon schmal genug, es wird nur oben und unten beschnitten.')),
+    cropBatchHint: el('p', { class: 'muted', hidden: true }, t('Die Vorschau zeigt die erste Datei. Der Ausschnitt gilt für alle Dateien an derselben Stelle.')),
     sizeCard: el('section', { class: 'card stack' }),
     sizeToggle: el('input', {
       type: 'checkbox',
@@ -320,27 +324,27 @@ function buildPage(root) {
       type: 'number',
       min: 1,
       value: 25,
-      'aria-label': 'Zielgröße in MB',
+      'aria-label': t('Zielgröße in MB'),
       oninput: updatePlan,
     }),
     summary: el('p', { class: 'muted' }),
     folder: el('span', { class: 'folder-path' }),
-    resetFolder: el('button', { class: 'button small', hidden: true, onclick: resetFolder }, 'Wie Original'),
-    start: el('button', { class: 'button primary large', onclick: startConvert }, 'Konvertieren'),
+    resetFolder: el('button', { class: 'button small', hidden: true, onclick: resetFolder }, t('Wie Original')),
+    start: el('button', { class: 'button primary large', onclick: startConvert }, t('Konvertieren')),
   };
 
   parts.stage.append(parts.maskLeft, parts.maskRight);
   parts.cropArea.append(
     parts.stage,
-    el('label', { class: 'crop-control' }, el('span', { class: 'muted' }, 'Bildausschnitt'), parts.cropSlider),
+    el('label', { class: 'crop-control' }, el('span', { class: 'muted' }, t('Bildausschnitt')), parts.cropSlider),
     parts.cropInfo,
     parts.cropBatchHint,
   );
 
   parts.videoCard.append(
-    el('h2', {}, 'Bild'),
-    el('div', { class: 'option-row' }, el('span', { class: 'muted' }, 'Auflösung'), parts.resolution),
-    el('label', { class: 'switch' }, parts.portrait, el('span', { class: 'switch-track' }), 'Hochformat 9:16 zuschneiden'),
+    el('h2', {}, t('Bild')),
+    el('div', { class: 'option-row' }, el('span', { class: 'muted' }, t('Auflösung')), parts.resolution),
+    el('label', { class: 'switch' }, parts.portrait, el('span', { class: 'switch-track' }), t('Hochformat 9:16 zuschneiden')),
     parts.cropArea,
   );
 
@@ -357,8 +361,8 @@ function buildPage(root) {
   );
 
   parts.sizeCard.append(
-    el('h2', {}, 'Größe'),
-    el('label', { class: 'switch' }, parts.sizeToggle, el('span', { class: 'switch-track' }), 'Auf Zielgröße komprimieren'),
+    el('h2', {}, t('Größe')),
+    el('label', { class: 'switch' }, parts.sizeToggle, el('span', { class: 'switch-track' }), t('Auf Zielgröße komprimieren')),
     parts.sizeFields,
   );
 
@@ -367,12 +371,12 @@ function buildPage(root) {
       el('div', { class: 'file-card' },
         el('div', { class: 'video-text' }, parts.name, parts.info),
         el('div', { class: 'marker-row' },
-          el('button', { class: 'button small', onclick: () => parts.addFiles.click() }, 'Dateien hinzufügen'),
-          el('button', { class: 'button small', onclick: closeFiles }, 'Alle entfernen'))),
+          el('button', { class: 'button small', onclick: () => parts.addFiles.click() }, t('Dateien hinzufügen')),
+          el('button', { class: 'button small', onclick: closeFiles }, t('Alle entfernen')))),
       parts.fileList,
     ),
     el('section', { class: 'card stack' },
-      el('h2', {}, 'Zielformat'),
+      el('h2', {}, t('Zielformat')),
       el('div', { class: 'option-row' }, parts.videoFormats, parts.audioFormats),
     ),
     parts.videoCard,
@@ -380,10 +384,10 @@ function buildPage(root) {
     el('section', { class: 'card stack' },
       parts.summary,
       el('div', { class: 'folder-row' },
-        el('span', { class: 'muted' }, 'Zielordner'),
+        el('span', { class: 'muted' }, t('Zielordner')),
         parts.folder,
         parts.resetFolder,
-        el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern'),
+        el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern')),
       ),
       el('div', {}, parts.start),
     ),
@@ -394,12 +398,12 @@ function buildPage(root) {
   parts.addFiles.hidden = true;
   parts.workspace.append(parts.addFiles);
 
-  root.append(pageHeader('Konvertieren', 'Format, Größe und Bild passend machen, auch für viele Dateien auf einmal.'), parts.message, parts.drop, parts.workspace);
+  root.append(pageHeader(t('Konvertieren'), t('Format, Größe und Bild passend machen, auch für viele Dateien auf einmal.')), parts.message, parts.drop, parts.workspace);
 }
 
 export default {
   id: 'convert',
-  label: 'Konvertieren',
+  label: t('Konvertieren'),
   mount: buildPage,
   onShow(data) {
     if (data?.filePath) openFiles([data.filePath]);

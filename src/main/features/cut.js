@@ -5,13 +5,14 @@ const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { runFfmpeg, concatFiles, probeMedia } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
+const { t } = require('../core/i18n');
 
 function validate(options, media) {
-  if (options.sections.length === 0) throw new UserError('Bitte lege mindestens einen Abschnitt fest.');
-  if (!options.folder) throw new UserError('Bitte wähle einen Zielordner.');
+  if (options.sections.length === 0) throw new UserError(t('Bitte lege mindestens einen Abschnitt fest.'));
+  if (!options.folder) throw new UserError(t('Bitte wähle einen Zielordner.'));
   for (const { start, end } of options.sections) {
-    if (!(end > start) || start < 0) throw new UserError('Bei einem Abschnitt liegt das Ende vor dem Start.');
-    if (end > media.duration + 1) throw new UserError('Ein Abschnitt geht über das Ende des Videos hinaus.');
+    if (!(end > start) || start < 0) throw new UserError(t('Bei einem Abschnitt liegt das Ende vor dem Start.'));
+    if (end > media.duration + 1) throw new UserError(t('Ein Abschnitt geht über das Ende des Videos hinaus.'));
   }
 }
 
@@ -47,7 +48,7 @@ function register({ ipcMain, queue, tools }) {
       for (const [index, section] of sections.entries()) {
         const length = section.end - section.start;
         const piece = path.join(tempDir, `teil-${index + 1}${ext}`);
-        const label = sections.length > 1 ? `Abschnitt ${index + 1} von ${sections.length}` : 'Schneidet';
+        const label = sections.length > 1 ? t('Abschnitt {number} von {total}', { number: index + 1, total: sections.length }) : t('Schneidet');
         job.update({ detail: label });
 
         await runFfmpeg(tools.path('ffmpeg'), sectionArgs(section, options, media, piece), {
@@ -60,15 +61,15 @@ function register({ ipcMain, queue, tools }) {
       }
 
       if (options.merge && pieces.length > 1) {
-        job.update({ detail: 'Fügt Abschnitte zusammen …', progress: null });
+        job.update({ detail: t('Fügt Abschnitte zusammen …'), progress: null });
         const merged = path.join(tempDir, `gesamt${ext}`);
         await concatFiles(tools.path('ffmpeg'), pieces, merged, job.signal);
-        return await moveFile(merged, options.folder, `${baseName} (geschnitten)${ext}`);
+        return await moveFile(merged, options.folder, `${baseName} (${t('geschnitten')})${ext}`);
       }
 
       let saved = null;
       for (const [index, piece] of pieces.entries()) {
-        const suffix = pieces.length > 1 ? `Teil ${index + 1}` : 'geschnitten';
+        const suffix = pieces.length > 1 ? t('Teil {number}', { number: index + 1 }) : t('geschnitten');
         saved = await moveFile(piece, options.folder, `${baseName} (${suffix})${ext}`);
       }
       return saved;

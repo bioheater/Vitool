@@ -4,15 +4,17 @@ import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { EffectPreview } from '../components/effect-preview.js';
 import { createFileDrop } from '../components/file-drop.js';
+import { createSendTo } from '../components/send-to.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { SectionEditor } from '../components/section-editor.js';
+import { t, formatNumber } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
 const DEFAULT_SECONDS = 10;
 const LONG_SECONDS = 30;
 const STAGE_HEIGHT = 400;
-const CLICK_HINT = 'Linksklick: gehört dazu. Rechtsklick: gehört nicht dazu. Klick auf einen Punkt: entfernt ihn.';
+const CLICK_HINT = t('Linksklick: gehört dazu. Rechtsklick: gehört nicht dazu. Klick auf einen Punkt: entfernt ihn.');
 
 const state = {
   status: null,
@@ -72,43 +74,43 @@ async function act(channel, ...args) {
 function modelCard(model) {
   const selected = state.status.selected === model.id;
   const action = model.downloaded
-    ? el('button', { class: 'button small', onclick: () => confirmRemoveModel(model) }, 'Entfernen')
-    : el('button', { class: 'button small', onclick: () => act('ai:downloadModel', model.id) }, 'Herunterladen');
+    ? el('button', { class: 'button small', onclick: () => confirmRemoveModel(model) }, t('Entfernen'))
+    : el('button', { class: 'button small', onclick: () => act('ai:downloadModel', model.id) }, t('Herunterladen'));
 
   return el('div', { class: `model-card ${selected ? 'active' : ''}` },
-    el('strong', {}, model.label, model.recommended ? el('span', { class: 'model-tag' }, 'Empfohlen') : null),
+    el('strong', {}, model.label, model.recommended ? el('span', { class: 'model-tag' }, t('Empfohlen')) : null),
     el('span', { class: 'muted' }, model.text),
     el('span', { class: 'muted' }, `${model.sizeMb} MB`),
     el('div', { class: 'marker-row' },
       model.downloaded ? el('button', {
         class: `flag ${selected ? 'active' : ''}`,
         onclick: () => act('ai:selectModel', model.id),
-      }, selected ? 'Ausgewählt' : 'Auswählen') : null,
+      }, selected ? t('Ausgewählt') : t('Auswählen')) : null,
       action),
   );
 }
 
 function confirmRemoveModel(model) {
-  if (window.confirm(`Modell ${model.label} wirklich entfernen?`)) act('ai:removeModel', model.id);
+  if (window.confirm(t('Modell {name} wirklich entfernen?', { name: model.label }))) act('ai:removeModel', model.id);
 }
 
 function confirmUninstall() {
-  if (window.confirm('Das KI-Paket mit allen Modellen wirklich vollständig entfernen?')) act('ai:uninstall');
+  if (window.confirm(t('Das KI-Paket mit allen Modellen wirklich vollständig entfernen?'))) act('ai:uninstall');
 }
 
 // Bis Python und Grafikkarte geprüft sind, ist der Knopf gesperrt und sagt das auch.
 function installRequirements(status) {
   if (!status.checked) {
     return [
-      el('p', { class: 'muted' }, 'Grafikkarte und Python werden geprüft …'),
-      el('div', {}, el('button', { class: 'button primary', disabled: true }, 'KI-Paket installieren')),
+      el('p', { class: 'muted' }, t('Grafikkarte und Python werden geprüft …')),
+      el('div', {}, el('button', { class: 'button primary', disabled: true }, t('KI-Paket installieren'))),
     ];
   }
   return [
-    el('p', { class: 'muted' }, status.gpu ? `Grafikkarte erkannt: ${status.gpu}` : 'Keine NVIDIA-Grafikkarte erkannt. Die KI läuft dann über den Prozessor und ist sehr langsam.'),
+    el('p', { class: 'muted' }, status.gpu ? t('Grafikkarte erkannt: {name}', { name: status.gpu }) : t('Keine NVIDIA-Grafikkarte erkannt. Die KI läuft dann über den Prozessor und ist sehr langsam.')),
     status.python
-      ? el('div', {}, el('button', { class: 'button primary', onclick: () => act('ai:install') }, 'KI-Paket installieren'))
-      : el('p', { class: 'message' }, 'Dafür wird Python 3.10 oder neuer gebraucht. Installiere es mit: winget install Python.Python.3.12'),
+      ? el('div', {}, el('button', { class: 'button primary', onclick: () => act('ai:install') }, t('KI-Paket installieren')))
+      : el('p', { class: 'message' }, t('Dafür wird Python 3.10 oder neuer gebraucht. Installiere es mit: winget install Python.Python.3.12')),
   ];
 }
 
@@ -120,20 +122,20 @@ function renderSetup() {
   parts.setup.hidden = Boolean(state.media);
   parts.setup.replaceChildren(...[
     el('section', { class: 'card stack' },
-      el('h2', {}, status.installed ? 'KI-Paket' : 'Freiwilliges Zusatzpaket'),
-      el('p', { class: 'muted' }, 'KI-Maske nutzt SAM 2.1 von Meta: Du klickst ein Objekt an, die KI erkennt seine Form und verfolgt es durchs Video. Alles läuft nur auf deinem Rechner, es wird kein Video hochgeladen. Vitool funktioniert auch ohne dieses Paket vollständig.'),
+      el('h2', {}, status.installed ? t('KI-Paket') : t('Freiwilliges Zusatzpaket')),
+      el('p', { class: 'muted' }, t('KI-Maske nutzt SAM 2.1 von Meta: Du klickst ein Objekt an, die KI erkennt seine Form und verfolgt es durchs Video. Alles läuft nur auf deinem Rechner, es wird kein Video hochgeladen. Vitool funktioniert auch ohne dieses Paket vollständig.')),
       status.installed
         ? el('div', { class: 'marker-row' },
-          el('span', { class: 'muted' }, status.usedGb === null ? 'Installiert · Speicherbedarf wird ermittelt …' : `Installiert · belegt ${status.usedGb} GB`),
-          el('button', { class: 'button small', onclick: confirmUninstall }, 'KI-Paket vollständig entfernen'))
+          el('span', { class: 'muted' }, status.usedGb === null ? t('Installiert · Speicherbedarf wird ermittelt …') : t('Installiert · belegt {size} GB', { size: formatNumber(status.usedGb) })),
+          el('button', { class: 'button small', onclick: confirmUninstall }, t('KI-Paket vollständig entfernen')))
         : el('div', { class: 'stack' },
-          el('p', {}, `Download etwa ${status.installSizeGb} GB · frei auf dem Laufwerk: ${status.freeGb} GB`),
+          el('p', {}, t('Download etwa {size} GB · frei auf dem Laufwerk: {free} GB', { size: formatNumber(status.installSizeGb), free: status.freeGb })),
           ...installRequirements(status),
         ),
     ),
     status.installed ? el('section', { class: 'card stack' },
-      el('h2', {}, 'Modell'),
-      el('p', { class: 'muted' }, 'Du kannst ein oder mehrere Modelle laden. Größere sind genauer, aber langsamer.'),
+      el('h2', {}, t('Modell')),
+      el('p', { class: 'muted' }, t('Du kannst ein oder mehrere Modelle laden. Größere sind genauer, aber langsamer.')),
       el('div', { class: 'model-grid' }, ...status.models.map(modelCard)),
     ) : null,
   ].filter(Boolean));
@@ -171,7 +173,7 @@ async function openFile(filePath) {
     return;
   }
   if (!response.media.hasVideo) {
-    setMessage('Diese Datei enthält kein Video.');
+    setMessage(t('Diese Datei enthält kein Video.'));
     return;
   }
 
@@ -210,7 +212,7 @@ function closeFile() {
 
 function renderObjects() {
   parts.objectList.replaceChildren(...state.objects.map((object, index) => {
-    const name = `Objekt ${index + 1} (${object.clicks.length})`;
+    const name = t('Objekt {number} ({clicks})', { number: index + 1, clicks: object.clicks.length });
     const select = el('button', {
       class: `object-chip ${index === state.activeObject ? 'active' : ''}`,
       'aria-pressed': String(index === state.activeObject),
@@ -218,8 +220,8 @@ function renderObjects() {
     }, name);
     const remove = el('button', {
       class: 'object-remove',
-      'aria-label': `${name} entfernen`,
-      title: 'Objekt entfernen',
+      'aria-label': t('{name} entfernen', { name }),
+      title: t('Objekt entfernen'),
       onclick: () => removeObject(index),
     }, '×');
     return el('span', { class: 'object-item' }, select, state.objects.length > 1 ? remove : null);
@@ -266,8 +268,8 @@ function renderDots() {
       const active = objectIndex === state.activeObject ? 'current' : '';
       const dot = el('button', {
         class: `ai-dot ${click.label ? 'add' : 'remove'} ${active}`,
-        title: 'Punkt entfernen',
-        'aria-label': 'Punkt entfernen',
+        title: t('Punkt entfernen'),
+        'aria-label': t('Punkt entfernen'),
         onclick: (event) => {
           event.stopPropagation();
           removeClick(object, click);
@@ -348,7 +350,7 @@ async function prepare() {
   }
   state.session = { frames: response.frames, fps: response.fps, device: response.device };
   state.phase = 'click';
-  parts.deviceInfo.textContent = response.device === 'cuda' ? 'Läuft auf der Grafikkarte' : 'Läuft auf dem Prozessor, das dauert länger';
+  parts.deviceInfo.textContent = response.device === 'cuda' ? t('Läuft auf der Grafikkarte') : t('Läuft auf dem Prozessor, das dauert länger');
   player.video.pause();
   player.video.currentTime = start;
   renderSteps();
@@ -358,7 +360,7 @@ async function prepare() {
 async function sendClicks(object, frame) {
   const clicks = object.clicks.filter((click) => click.frame === frame);
   busy = true;
-  parts.clickHint.textContent = 'KI rechnet …';
+  parts.clickHint.textContent = t('KI rechnet …');
   const response = await invoke('ai:points', {
     frame,
     object: object.id,
@@ -442,7 +444,7 @@ async function track() {
   if (!response.ok) {
     if (response.canceled) {
       changeRange();
-      setMessage('Abgebrochen. Bereite den Abschnitt neu vor, um weiterzumachen.');
+      setMessage(t('Abgebrochen. Bereite den Abschnitt neu vor, um weiterzumachen.'));
     } else {
       setMessage(response.error);
     }
@@ -502,9 +504,9 @@ function buildPage(root) {
     drop: createFileDrop({
       onFile: openFile,
       features: [
-        { iconName: 'target', title: 'Anklicken genügt', text: 'Die KI erkennt die Form des Objekts' },
-        { iconName: 'layers', title: 'Automatisch verfolgen', text: 'Die Maske folgt dem Objekt im Video' },
-        { iconName: 'image', title: 'Blurren oder freistellen', text: 'Objekt oder Hintergrund bearbeiten' },
+        { iconName: 'target', title: t('Anklicken genügt'), text: t('Die KI erkennt die Form des Objekts') },
+        { iconName: 'layers', title: t('Automatisch verfolgen'), text: t('Die Maske folgt dem Objekt im Video') },
+        { iconName: 'image', title: t('Blurren oder freistellen'), text: t('Objekt oder Hintergrund bearbeiten') },
       ],
     }),
     workspace: el('div', { class: 'stack', hidden: true }),
@@ -515,18 +517,18 @@ function buildPage(root) {
     effect: el('canvas', { class: 'ai-effect', hidden: true }),
     dots: el('div', { class: 'ai-dots' }),
     prepareCard: el('section', { class: 'card stack' }),
-    prepare: el('button', { class: 'button primary', onclick: prepare }, 'Abschnitt vorbereiten'),
-    lengthHint: el('p', { class: 'muted', hidden: true }, 'Längere Abschnitte brauchen deutlich mehr Zeit und Speicher.'),
+    prepare: el('button', { class: 'button primary', onclick: prepare }, t('Abschnitt vorbereiten')),
+    lengthHint: el('p', { class: 'muted', hidden: true }, t('Längere Abschnitte brauchen deutlich mehr Zeit und Speicher.')),
     clickCard: el('section', { class: 'card stack', hidden: true }),
     clickHint: el('p', { class: 'muted' }, CLICK_HINT),
     objectList: el('div', { class: 'object-list' }),
     deviceInfo: el('span', { class: 'muted' }),
-    track: el('button', { class: 'button primary', disabled: true, onclick: track }, 'Durchs Video verfolgen'),
+    track: el('button', { class: 'button primary', disabled: true, onclick: track }, t('Durchs Video verfolgen')),
     exportCard: el('section', { class: 'card stack', hidden: true }),
-    strength: el('input', { type: 'range', min: 1, max: 100, value: 60, 'aria-label': 'Stärke', oninput: updateOverlay }),
-    expand: el('input', { type: 'range', min: -30, max: 30, value: 2, 'aria-label': 'Maske erweitern', oninput: updateSliderLabels }),
+    strength: el('input', { type: 'range', min: 1, max: 100, value: 60, 'aria-label': t('Stärke'), oninput: updateOverlay }),
+    expand: el('input', { type: 'range', min: -30, max: 30, value: 2, 'aria-label': t('Maske erweitern'), oninput: updateSliderLabels }),
     expandValue: el('span', { class: 'muted slider-value' }),
-    feather: el('input', { type: 'range', min: 0, max: 40, value: 0, 'aria-label': 'Weiche Kante', oninput: updateSliderLabels }),
+    feather: el('input', { type: 'range', min: 0, max: 40, value: 0, 'aria-label': t('Weiche Kante'), oninput: updateSliderLabels }),
     featherValue: el('span', { class: 'muted slider-value' }),
     folder: el('span', { class: 'folder-path' }),
   };
@@ -541,57 +543,57 @@ function buildPage(root) {
   updateSliderLabels();
 
   parts.prepareCard.append(
-    el('h2', {}, '1. Abschnitt wählen'),
-    el('p', { class: 'muted' }, 'Wähle mit den Griffen, in welchem Teil des Videos die KI arbeiten soll.'),
+    el('h2', {}, t('1. Abschnitt wählen')),
+    el('p', { class: 'muted' }, t('Wähle mit den Griffen, in welchem Teil des Videos die KI arbeiten soll.')),
     parts.lengthHint,
     el('div', {}, parts.prepare),
   );
 
   parts.clickCard.append(
-    el('h2', {}, '2. Objekt anklicken'),
+    el('h2', {}, t('2. Objekt anklicken')),
     parts.clickHint,
-    el('div', { class: 'marker-row' }, parts.objectList, el('button', { class: 'button small', onclick: addObject }, 'Weiteres Objekt')),
+    el('div', { class: 'marker-row' }, parts.objectList, el('button', { class: 'button small', onclick: addObject }, t('Weiteres Objekt'))),
     el('div', { class: 'marker-row' },
-      el('button', { class: 'button small', onclick: resetPoints }, 'Alle Klicks löschen'),
-      el('button', { class: 'button small', onclick: changeRange }, 'Abschnitt ändern'),
+      el('button', { class: 'button small', onclick: resetPoints }, t('Alle Klicks löschen')),
+      el('button', { class: 'button small', onclick: changeRange }, t('Abschnitt ändern')),
       parts.deviceInfo,
     ),
     el('div', {}, parts.track),
   );
 
-  const strengthField = el('label', { class: 'crop-control' }, el('span', { class: 'muted' }, 'Stärke'), parts.strength);
-  const targetField = choice('Anwenden auf', [{ value: 'object', text: 'Objekt' }, { value: 'background', text: 'Hintergrund' }], state.target, (value) => {
+  const strengthField = el('label', { class: 'crop-control' }, el('span', { class: 'muted' }, t('Stärke')), parts.strength);
+  const targetField = choice(t('Anwenden auf'), [{ value: 'object', text: t('Objekt') }, { value: 'background', text: t('Hintergrund') }], state.target, (value) => {
     state.target = value;
     updateOverlay();
   });
-  const matteHint = el('p', { class: 'muted', hidden: true }, 'Die Alpha-Maske enthält genau den gewählten Abschnitt und hat keinen Ton. Lege sie im Schnittprogramm passend zu diesem Abschnitt über das Video.');
+  const matteHint = el('p', { class: 'muted', hidden: true }, t('Die Alpha-Maske enthält genau den gewählten Abschnitt und hat keinen Ton. Lege sie im Schnittprogramm passend zu diesem Abschnitt über das Video.'));
   const matteFields = el('div', { class: 'option-row', hidden: true },
-    choice('Weißer Bereich', [{ value: 'object', text: 'Objekt weiß' }, { value: 'background', text: 'Hintergrund weiß' }], state.matteWhite, (value) => {
+    choice(t('Weißer Bereich'), [{ value: 'object', text: t('Objekt weiß') }, { value: 'background', text: t('Hintergrund weiß') }], state.matteWhite, (value) => {
       state.matteWhite = value;
       updateOverlay();
     }),
-    choice('Dateiformat', [{ value: 'mp4', text: 'MP4' }, { value: 'prores', text: 'ProRes (MOV)' }], state.matteFormat, (value) => {
+    choice(t('Dateiformat'), [{ value: 'mp4', text: 'MP4' }, { value: 'prores', text: 'ProRes (MOV)' }], state.matteFormat, (value) => {
       state.matteFormat = value;
     }),
   );
-  const sectionHint = el('p', { class: 'muted' }, 'Freistellen speichert nur den Abschnitt als transparente WebM-Datei, die anderen Effekte das ganze Video.');
+  const sectionHint = el('p', { class: 'muted' }, t('Freistellen speichert nur den Abschnitt als transparente WebM-Datei, die anderen Effekte das ganze Video.'));
   parts.exportCard.append(
     el('h2', {}, '3. Ergebnis'),
     el('div', { class: 'marker-row' },
-      el('span', { class: 'muted' }, 'Ansicht'),
-      choice('Ansicht', [{ value: 'effect', text: 'Effekt' }, { value: 'mask', text: 'Maske' }], state.view, (value) => {
+      el('span', { class: 'muted' }, t('Ansicht')),
+      choice(t('Ansicht'), [{ value: 'effect', text: t('Effekt') }, { value: 'mask', text: t('Maske') }], state.view, (value) => {
         state.view = value;
         updateOverlay();
       }),
     ),
     el('div', { class: 'option-row' },
       targetField,
-      choice('Effekt', [
+      choice(t('Effekt'), [
         { value: 'blur', text: 'Blur' },
-        { value: 'pixel', text: 'Verpixeln' },
-        { value: 'black', text: 'Schwarz' },
-        { value: 'transparent', text: 'Freistellen' },
-        { value: 'matte', text: 'Alpha-Maske' },
+        { value: 'pixel', text: t('Verpixeln') },
+        { value: 'black', text: t('Schwarz') },
+        { value: 'transparent', text: t('Freistellen') },
+        { value: 'matte', text: t('Alpha-Maske') },
       ], state.effect, (value) => {
         state.effect = value;
         const matte = value === 'matte';
@@ -605,25 +607,27 @@ function buildPage(root) {
     ),
     matteFields,
     strengthField,
-    el('label', { class: 'crop-control' }, el('span', { class: 'muted slider-label' }, 'Maske erweitern'), parts.expand, parts.expandValue),
-    el('label', { class: 'crop-control' }, el('span', { class: 'muted slider-label' }, 'Weiche Kante'), parts.feather, parts.featherValue),
+    el('label', { class: 'crop-control' }, el('span', { class: 'muted slider-label' }, t('Maske erweitern')), parts.expand, parts.expandValue),
+    el('label', { class: 'crop-control' }, el('span', { class: 'muted slider-label' }, t('Weiche Kante')), parts.feather, parts.featherValue),
     sectionHint,
     matteHint,
     el('div', { class: 'folder-row' },
-      el('span', { class: 'muted' }, 'Zielordner'),
+      el('span', { class: 'muted' }, t('Zielordner')),
       parts.folder,
-      el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern'),
+      el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern')),
     ),
     el('div', { class: 'marker-row' },
-      el('button', { class: 'button primary', onclick: exportResult }, 'Exportieren'),
-      el('button', { class: 'button small', onclick: redo }, 'Nachbessern'),
+      el('button', { class: 'button primary', onclick: exportResult }, t('Exportieren')),
+      el('button', { class: 'button small', onclick: redo }, t('Nachbessern')),
     ),
   );
 
   parts.workspace.append(
     el('section', { class: 'card file-card' },
       el('div', { class: 'video-text' }, parts.name, parts.info),
-      el('button', { class: 'button small', onclick: closeFile }, 'Andere Datei'),
+      el('div', { class: 'file-actions' },
+        createSendTo({ getPath: () => state.media?.path, exclude: 'ai' }),
+        el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),
     ),
     // Das Video bleibt beim Scrollen stehen, damit die Regler sichtbar wirken.
     el('div', { class: 'ai-columns' },
@@ -634,7 +638,7 @@ function buildPage(root) {
 
   root.classList.add('wide-page');
   root.append(
-    pageHeader('KI-Maske', 'Objekte anklicken, automatisch verfolgen und bearbeiten.'),
+    pageHeader(t('KI-Maske'), t('Objekte anklicken, automatisch verfolgen und bearbeiten.')),
     parts.message,
     parts.setup,
     parts.drop,
@@ -652,10 +656,15 @@ function buildPage(root) {
 
 export default {
   id: 'ai',
-  label: 'KI-Maske',
+  label: t('KI-Maske'),
   mount: buildPage,
-  onShow() {
-    refresh();
+  // Eine weitergegebene Datei öffnet sich nur, wenn Paket und Modell bereit sind.
+  async onShow(data) {
+    await refresh();
+    if (!data?.filePath) return;
+    const ready = state.status.installed && state.status.models.some((model) => model.downloaded);
+    if (ready) openFile(data.filePath);
+    else setMessage(t('Für die KI-Maske muss zuerst das Zusatzpaket mit einem Modell eingerichtet werden.'));
   },
   onHide() {
     player.video.pause();

@@ -3,8 +3,10 @@ import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
+import { createSendTo } from '../components/send-to.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { SectionEditor } from '../components/section-editor.js';
+import { t } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
@@ -14,8 +16,8 @@ let player = null;
 let editor = null;
 
 const MODE_HINTS = {
-  fast: 'Dauert nur Sekunden und behält die volle Qualität. Der Schnitt beginnt am nächsten passenden Bild und kann deshalb etwas abweichen.',
-  exact: 'Trifft die Zeiten genau, dauert aber länger, da neu kodiert wird. Das Ergebnis ist eine MP4-Datei.',
+  fast: t('Dauert nur Sekunden und behält die volle Qualität. Der Schnitt beginnt am nächsten passenden Bild und kann deshalb etwas abweichen.'),
+  exact: t('Trifft die Zeiten genau, dauert aber länger, da neu kodiert wird. Das Ergebnis ist eine MP4-Datei.'),
 };
 
 function setMessage(text) {
@@ -39,7 +41,7 @@ async function openFile(filePath) {
   parts.name.title = media.path;
   parts.info.textContent = [
     formatTime(media.duration),
-    media.height ? `${media.width} × ${media.height}` : 'Nur Audio',
+    media.height ? `${media.width} × ${media.height}` : t('Nur Audio'),
   ].join(' · ');
   parts.folder.textContent = state.folder;
   parts.folder.title = state.folder;
@@ -109,16 +111,16 @@ function buildPage(root) {
     drop: createFileDrop({
       onFile: openFile,
       features: [
-        { iconName: 'bolt', title: 'Blitzschnell', text: 'Ohne Neukodierung in Sekunden fertig' },
-        { iconName: 'target', title: 'Auf den Punkt', text: 'Exakt schneiden, wenn es genau sein muss' },
-        { iconName: 'layers', title: 'Mehrere Abschnitte', text: 'Einzeln speichern oder zusammenfügen' },
+        { iconName: 'bolt', title: t('Blitzschnell'), text: t('Ohne Neukodierung in Sekunden fertig') },
+        { iconName: 'target', title: t('Auf den Punkt'), text: t('Exakt schneiden, wenn es genau sein muss') },
+        { iconName: 'layers', title: t('Mehrere Abschnitte'), text: t('Einzeln speichern oder zusammenfügen') },
       ],
     }),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
     info: el('p', { class: 'muted' }),
-    modeFast: el('button', { class: 'segment', onclick: () => setMode('fast') }, 'Schnell'),
-    modeExact: el('button', { class: 'segment', onclick: () => setMode('exact') }, 'Exakt'),
+    modeFast: el('button', { class: 'segment', onclick: () => setMode('fast') }, t('Schnell')),
+    modeExact: el('button', { class: 'segment', onclick: () => setMode('exact') }, t('Exakt')),
     modeHint: el('p', { class: 'muted' }),
     folder: el('span', { class: 'folder-path' }),
   };
@@ -130,37 +132,39 @@ function buildPage(root) {
   parts.workspace.append(
     el('section', { class: 'card file-card' },
       el('div', { class: 'video-text' }, parts.name, parts.info),
-      el('button', { class: 'button small', onclick: closeFile }, 'Andere Datei'),
+      el('div', { class: 'file-actions' },
+        createSendTo({ getPath: () => state.media?.path, exclude: 'cut' }),
+        el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),
     ),
     el('section', { class: 'card stack' },
       player.root,
       el('div', { class: 'marker-row' },
-        el('button', { class: 'button', onclick: () => editor.setEdge('start', video.currentTime) }, 'Start hier setzen'),
-        el('button', { class: 'button', onclick: () => editor.setEdge('end', video.currentTime) }, 'Ende hier setzen'),
+        el('button', { class: 'button', onclick: () => editor.setEdge('start', video.currentTime) }, t('Start hier setzen')),
+        el('button', { class: 'button', onclick: () => editor.setEdge('end', video.currentTime) }, t('Ende hier setzen')),
         el('span', { class: 'muted' }, 'Tasten: I = Start, O = Ende, Leertaste = Abspielen, ← → = Einzelbild'),
       ),
       editor.root,
     ),
     el('section', { class: 'card stack' },
-      el('div', { class: 'segments', role: 'group', 'aria-label': 'Art des Exports' }, parts.modeFast, parts.modeExact),
+      el('div', { class: 'segments', role: 'group', 'aria-label': t('Art des Exports') }, parts.modeFast, parts.modeExact),
       parts.modeHint,
       el('div', { class: 'folder-row' },
-        el('span', { class: 'muted' }, 'Zielordner'),
+        el('span', { class: 'muted' }, t('Zielordner')),
         parts.folder,
-        el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern'),
+        el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern')),
       ),
-      el('div', {}, el('button', { class: 'button primary large', onclick: exportFile }, 'Exportieren')),
+      el('div', {}, el('button', { class: 'button primary large', onclick: exportFile }, t('Exportieren'))),
     ),
   );
 
-  root.append(pageHeader('Schneiden', 'Nur die besten Stellen behalten.'), parts.message, parts.drop, parts.workspace);
+  root.append(pageHeader(t('Schneiden'), t('Nur die besten Stellen behalten.')), parts.message, parts.drop, parts.workspace);
   setMode('fast');
   document.addEventListener('keydown', onKeyDown);
 }
 
 export default {
   id: 'cut',
-  label: 'Schneiden',
+  label: t('Schneiden'),
   mount: buildPage,
   onShow(data) {
     state.visible = true;

@@ -1,5 +1,6 @@
 // Startet externe Programme (yt-dlp, FFmpeg) und liefert ihre Ausgabe Zeile für Zeile.
 const { spawn, execFile } = require('child_process');
+const { t } = require('./i18n');
 
 function killTree(pid) {
   execFile('taskkill', ['/PID', String(pid), '/T', '/F'], { windowsHide: true }, () => {});
@@ -72,7 +73,7 @@ function run(command, args, { onLine, signal, env, cwd, writeInput } = {}) {
 
 class CanceledError extends Error {
   constructor() {
-    super('Abgebrochen');
+    super(t('Abgebrochen'));
     this.name = 'CanceledError';
   }
 }

@@ -3,6 +3,7 @@
 // Mit onFiles nimmt sie mehrere Dateien auf einmal an.
 import { el, icon } from '../utils/dom.js';
 import { ICONS } from '../utils/icons.js';
+import { t } from '../utils/i18n.js';
 
 function featureCard({ iconName, title, text }) {
   return el('div', { class: 'feature-card' },
@@ -14,8 +15,8 @@ function featureCard({ iconName, title, text }) {
 export function createFileDrop({
   onFile,
   onFiles,
-  title = onFiles ? 'Videos hierher ziehen' : 'Video hierher ziehen',
-  hint = 'oder klicken, um eine Datei auszuwählen',
+  title = onFiles ? t('Videos hierher ziehen') : t('Video hierher ziehen'),
+  hint = t('oder klicken, um eine Datei auszuwählen'),
   dialog = onFiles ? 'dialog:pickVideos' : 'dialog:pickVideo',
   compact = false,
   features = null,

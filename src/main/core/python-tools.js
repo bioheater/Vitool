@@ -5,6 +5,7 @@ const { execFile } = require('child_process');
 const { createWriteStream } = require('fs');
 const { UserError } = require('./error-messages');
 const { CanceledError } = require('./process-runner');
+const { t } = require('./i18n');
 
 function exec(command, args) {
   return new Promise((resolve) => {
@@ -73,7 +74,7 @@ async function downloadFile(url, target, { signal, onProgress }) {
   }
   if (total && loaded !== total) {
     await fs.rm(partPath, { force: true });
-    throw new UserError('Der Download war unvollständig. Bitte versuche es noch einmal.');
+    throw new UserError(t('Der Download war unvollständig. Bitte versuche es noch einmal.'));
   }
   await fs.rename(partPath, target);
 }

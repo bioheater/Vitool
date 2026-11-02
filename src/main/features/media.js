@@ -7,6 +7,7 @@ const { pathToFileURL } = require('url');
 const { toGermanMessage } = require('../core/error-messages');
 const { CanceledError } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
+const { t } = require('../core/i18n');
 
 const previewDir = path.join(os.tmpdir(), `vitool-vorschau-${process.pid}`);
 
@@ -15,7 +16,7 @@ function register({ ipcMain, queue, tools }) {
   async function runPreview(media, job) {
     await fs.mkdir(previewDir, { recursive: true });
     const output = path.join(previewDir, `${Date.now()}.mp4`);
-    job.update({ detail: 'Erstellt Vorschau' });
+    job.update({ detail: t('Erstellt Vorschau') });
     await runFfmpeg(tools.path('ffmpeg'), [
       '-i', media.path,
       '-map', '0:v:0', '-map', '0:a:0?',
@@ -25,7 +26,7 @@ function register({ ipcMain, queue, tools }) {
     ], {
       duration: media.duration,
       signal: job.signal,
-      onProgress: (part) => job.update({ progress: part * 100, detail: 'Erstellt Vorschau' }),
+      onProgress: (part) => job.update({ progress: part * 100, detail: t('Erstellt Vorschau') }),
     });
     return output;
   }
@@ -44,7 +45,7 @@ function register({ ipcMain, queue, tools }) {
       const media = await probeMedia(tools.path('ffprobe'), filePath);
       const output = await new Promise((resolve, reject) => {
         queue.add({
-          title: `Vorschau: ${media.name}`,
+          title: t('Vorschau: {name}', { name: media.name }),
           kind: 'preview',
           run: (job) => runPreview(media, job).then(resolve, (error) => {
             reject(error);

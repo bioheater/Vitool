@@ -3,6 +3,7 @@ import { el, icon, pageHeader } from '../utils/dom.js';
 import { ICONS } from '../utils/icons.js';
 import { formatTime } from '../utils/time.js';
 import { SectionEditor } from '../components/section-editor.js';
+import { t, formatDate } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
@@ -32,7 +33,7 @@ async function loadInfo() {
   if (!url) return;
 
   parts.load.disabled = true;
-  parts.load.textContent = 'Lädt …';
+  parts.load.textContent = t('Lädt …');
   parts.result.hidden = true;
   parts.playlistView.hidden = true;
   parts.playlistNote.hidden = true;
@@ -43,7 +44,7 @@ async function loadInfo() {
   const response = await invoke('download:info', url);
 
   parts.load.disabled = false;
-  parts.load.textContent = 'Prüfen';
+  parts.load.textContent = t('Prüfen');
   if (!response.ok) {
     setMessage(response.error);
     return;
@@ -57,11 +58,11 @@ async function loadPlaylist(url) {
   setMessage('');
   parts.playlistButton.disabled = true;
   parts.load.disabled = true;
-  parts.load.textContent = 'Lädt Playlist …';
+  parts.load.textContent = t('Lädt Playlist …');
   const response = await invoke('download:playlist', url);
   parts.playlistButton.disabled = false;
   parts.load.disabled = false;
-  parts.load.textContent = 'Prüfen';
+  parts.load.textContent = t('Prüfen');
   if (!response.ok) {
     setMessage(response.error);
     return;
@@ -93,8 +94,8 @@ function renderPlaylist() {
   parts.playlistTitle.textContent = playlist.title;
   parts.playlistMeta.textContent = [
     playlist.uploader,
-    `${playlist.entries.length} Videos`,
-    unavailable ? `${unavailable} nicht verfügbar` : null,
+    t('{count} Videos', { count: playlist.entries.length }),
+    unavailable ? t('{count} nicht verfügbar', { count: unavailable }) : null,
   ].filter(Boolean).join(' · ');
   parts.playlistList.replaceChildren(...playlist.entries.map((entry) => {
     const check = el('input', {
@@ -122,15 +123,15 @@ function renderPlaylist() {
   parts.plQuality.hidden = audio;
   parts.plFolder.textContent = state.settings.downloadDir;
   parts.plFolder.title = state.settings.downloadDir;
-  parts.plSubfolderName.textContent = `„${playlist.title}“`;
+  parts.plSubfolderName.textContent = t('„{name}“', { name: playlist.title });
   renderPlaylistCount(selected);
 }
 
 function renderPlaylistCount(selected = state.playlist.entries.filter((entry) => entry.selected)) {
   const count = selected.length;
-  parts.plCount.textContent = `${count} ausgewählt`;
+  parts.plCount.textContent = t('{count} ausgewählt', { count });
   parts.plStart.disabled = count === 0;
-  parts.plStart.textContent = count === 1 ? '1 Video herunterladen' : `${count} Videos herunterladen`;
+  parts.plStart.textContent = count === 1 ? t('1 Video herunterladen') : t('{count} Videos herunterladen', { count });
 }
 
 function selectAll(selected) {
@@ -156,7 +157,9 @@ async function startPlaylist() {
     return;
   }
   setMessage('');
-  parts.plStatus.textContent = `${response.count} ${response.count === 1 ? 'Video ist' : 'Videos sind'} in der Warteschlange. Ziel: ${response.folder}`;
+  parts.plStatus.textContent = response.count === 1
+    ? t('1 Video ist in der Warteschlange. Ziel: {folder}', { folder: response.folder })
+    : t('{count} Videos sind in der Warteschlange. Ziel: {folder}', { count: response.count, folder: response.folder });
   parts.plStatus.hidden = false;
 }
 
@@ -168,11 +171,11 @@ function showInfo(info) {
   parts.thumb.src = info.thumbnail ?? '';
   parts.thumb.hidden = !info.thumbnail;
   parts.title.textContent = info.title;
-  parts.meta.textContent = [info.uploader, info.duration ? formatTime(info.duration) : 'Live-Übertragung']
+  parts.meta.textContent = [info.uploader, info.duration ? formatTime(info.duration) : t('Live-Übertragung')]
     .filter(Boolean).join(' · ');
 
   parts.quality.replaceChildren(
-    el('option', { value: '' }, 'Beste Qualität'),
+    el('option', { value: '' }, t('Beste Qualität')),
     ...info.heights.map((height) => el('option', { value: String(height) }, `${height}p`)),
   );
 
@@ -289,16 +292,16 @@ function historyThumb(entry) {
 }
 
 function historyRow(entry) {
-  const date = new Date(entry.date).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
-  const count = entry.files.length > 1 ? ` · ${entry.files.length} Dateien` : '';
+  const date = formatDate(entry.date);
+  const count = entry.files.length > 1 ? ` · ${t('{count} Dateien', { count: entry.files.length })}` : '';
   return el('li', { class: 'history-row' },
     historyThumb(entry),
     el('div', { class: 'history-text' },
       el('span', { class: 'job-title', title: entry.title }, entry.title),
       el('span', { class: 'muted' }, `${date} · ${entry.mode === 'audio' ? 'MP3' : 'Video'}${count}`),
     ),
-    el('button', { class: 'button small', onclick: () => invoke('shell:openFile', entry.files[0]) }, 'Öffnen'),
-    el('button', { class: 'button small', onclick: () => invoke('shell:showFile', entry.files[0]) }, 'Im Ordner zeigen'),
+    el('button', { class: 'button small', onclick: () => invoke('shell:openFile', entry.files[0]) }, t('Öffnen')),
+    el('button', { class: 'button small', onclick: () => invoke('shell:showFile', entry.files[0]) }, t('Im Ordner zeigen')),
   );
 }
 
@@ -312,23 +315,23 @@ function buildPage(root) {
   parts = {
     url: el('input', {
       class: 'input grow',
-      placeholder: 'Link zum Video einfügen',
-      'aria-label': 'Link zum Video',
+      placeholder: t('Link zum Video einfügen'),
+      'aria-label': t('Link zum Video'),
       spellcheck: false,
       onkeydown: (event) => {
         if (event.key === 'Enter') loadInfo();
       },
       onpaste: () => setTimeout(loadInfo),
     }),
-    load: el('button', { class: 'button primary', onclick: loadInfo }, 'Prüfen'),
+    load: el('button', { class: 'button primary', onclick: loadInfo }, t('Prüfen')),
     message: el('p', { class: 'message', role: 'alert', hidden: true }),
     result: el('div', { class: 'stack', hidden: true }),
     thumb: el('img', { class: 'thumb', alt: '' }),
     title: el('h2', {}),
     meta: el('p', { class: 'muted' }),
-    modeVideo: el('button', { class: 'segment', onclick: () => { state.mode = 'video'; renderOptions(); } }, 'Video'),
-    modeAudio: el('button', { class: 'segment', onclick: () => { state.mode = 'audio'; renderOptions(); } }, 'Nur Audio (MP3)'),
-    quality: el('select', { class: 'input', 'aria-label': 'Qualität' }),
+    modeVideo: el('button', { class: 'segment', onclick: () => { state.mode = 'video'; renderOptions(); } }, t('Video')),
+    modeAudio: el('button', { class: 'segment', onclick: () => { state.mode = 'audio'; renderOptions(); } }, t('Nur Audio (MP3)')),
+    quality: el('select', { class: 'input', 'aria-label': t('Qualität') }),
     qualityField: el('div', {}),
     sectionToggle: el('input', {
       type: 'checkbox',
@@ -343,20 +346,20 @@ function buildPage(root) {
     folder: el('span', { class: 'folder-path' }),
     openInCut: el('input', { type: 'checkbox' }),
     history: el('ul', { class: 'history-list' }),
-    historyEmpty: el('p', { class: 'muted' }, 'Noch keine Downloads.'),
-    historyClear: el('button', { class: 'button small', onclick: async () => renderHistory(await invoke('download:clearHistory')) }, 'Verlauf leeren'),
+    historyEmpty: el('p', { class: 'muted' }, t('Noch keine Downloads.')),
+    historyClear: el('button', { class: 'button small', onclick: async () => renderHistory(await invoke('download:clearHistory')) }, t('Verlauf leeren')),
     playlistNote: el('section', { class: 'card playlist-note', hidden: true }),
-    playlistButton: el('button', { class: 'button small', onclick: () => loadPlaylist(state.pastedUrl) }, 'Ganze Playlist anzeigen'),
+    playlistButton: el('button', { class: 'button small', onclick: () => loadPlaylist(state.pastedUrl) }, t('Ganze Playlist anzeigen')),
     playlistView: el('div', { class: 'stack', hidden: true }),
     playlistTitle: el('h2', {}),
     playlistMeta: el('p', { class: 'muted' }),
     playlistList: el('ul', { class: 'playlist-list' }),
     plCount: el('span', { class: 'muted' }),
-    plVideo: el('button', { class: 'segment', onclick: () => { state.playlistMode = 'video'; renderPlaylist(); } }, 'Video'),
-    plAudio: el('button', { class: 'segment', onclick: () => { state.playlistMode = 'audio'; renderPlaylist(); } }, 'Nur Audio (MP3)'),
-    plQuality: el('select', { class: 'input', 'aria-label': 'Qualität für alle Videos' },
-      el('option', { value: '' }, 'Beste Qualität'),
-      ...PLAYLIST_HEIGHTS.map((height) => el('option', { value: String(height) }, `Höchstens ${height}p`))),
+    plVideo: el('button', { class: 'segment', onclick: () => { state.playlistMode = 'video'; renderPlaylist(); } }, t('Video')),
+    plAudio: el('button', { class: 'segment', onclick: () => { state.playlistMode = 'audio'; renderPlaylist(); } }, t('Nur Audio (MP3)')),
+    plQuality: el('select', { class: 'input', 'aria-label': t('Qualität für alle Videos') },
+      el('option', { value: '' }, t('Beste Qualität')),
+      ...PLAYLIST_HEIGHTS.map((height) => el('option', { value: String(height) }, t('Höchstens {height}p', { height })))),
     plFolder: el('span', { class: 'folder-path' }),
     plSubfolder: el('input', { type: 'checkbox', checked: true }),
     plSubfolderName: el('strong', {}),
@@ -365,38 +368,38 @@ function buildPage(root) {
   };
 
   parts.playlistNote.append(
-    el('span', {}, 'Dieses Video gehört zu einer Playlist.'),
+    el('span', {}, t('Dieses Video gehört zu einer Playlist.')),
     parts.playlistButton,
   );
   parts.playlistView.append(
     el('section', { class: 'card stack' },
       el('div', { class: 'section-head' },
         el('div', { class: 'video-text' }, parts.playlistTitle, parts.playlistMeta),
-        el('button', { class: 'button small', onclick: closePlaylist }, 'Schließen')),
+        el('button', { class: 'button small', onclick: closePlaylist }, t('Schließen'))),
       el('div', { class: 'marker-row' },
-        el('button', { class: 'button small', onclick: () => selectAll(true) }, 'Alle'),
-        el('button', { class: 'button small', onclick: () => selectAll(false) }, 'Keine'),
+        el('button', { class: 'button small', onclick: () => selectAll(true) }, t('Alle')),
+        el('button', { class: 'button small', onclick: () => selectAll(false) }, t('Keine')),
         parts.plCount),
       parts.playlistList,
     ),
     el('section', { class: 'card stack' },
       el('div', { class: 'option-row' },
-        el('div', { class: 'segments', role: 'group', 'aria-label': 'Art des Downloads' }, parts.plVideo, parts.plAudio),
+        el('div', { class: 'segments', role: 'group', 'aria-label': t('Art des Downloads') }, parts.plVideo, parts.plAudio),
         parts.plQuality),
       el('div', { class: 'folder-row' },
-        el('span', { class: 'muted' }, 'Zielordner'),
+        el('span', { class: 'muted' }, t('Zielordner')),
         parts.plFolder,
-        el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern')),
-      el('label', { class: 'check' }, parts.plSubfolder, el('span', {}, 'In einen eigenen Unterordner ', parts.plSubfolderName)),
+        el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern'))),
+      el('label', { class: 'check' }, parts.plSubfolder, el('span', {}, t('In einen eigenen Unterordner '), parts.plSubfolderName)),
       parts.plStatus,
       el('div', {}, parts.plStart),
     ),
   );
 
-  parts.previewHint.textContent = 'Für dieses Video ist keine Vorschau möglich. Lege die Zeiten über Griffe oder Eingabefelder fest.';
+  parts.previewHint.textContent = t('Für dieses Video ist keine Vorschau möglich. Lege die Zeiten über Griffe oder Eingabefelder fest.');
   parts.preview.append(parts.video);
   parts.qualityField.append(parts.quality);
-  parts.sectionRow.append(parts.sectionToggle, el('span', { class: 'switch-track' }), 'Nur einen Abschnitt herunterladen');
+  parts.sectionRow.append(parts.sectionToggle, el('span', { class: 'switch-track' }), t('Nur einen Abschnitt herunterladen'));
 
   editor = new SectionEditor({ video: parts.video, onMessage: setMessage, createRange: nextRange });
 
@@ -409,7 +412,7 @@ function buildPage(root) {
     parts.previewHint,
     editor.root,
     el('label', { class: 'check' }, parts.exact,
-      el('span', {}, 'Exakt schneiden', el('small', { class: 'muted' }, 'Genauer, aber langsamer, da neu kodiert wird. Ohne diese Option kann der Schnitt um einige Sekunden abweichen.'))),
+      el('span', {}, t('Exakt schneiden'), el('small', { class: 'muted' }, t('Genauer, aber langsamer, da neu kodiert wird. Ohne diese Option kann der Schnitt um einige Sekunden abweichen.')))),
   );
 
   parts.result.append(
@@ -419,7 +422,7 @@ function buildPage(root) {
     ),
     el('section', { class: 'card stack' },
       el('div', { class: 'option-row' },
-        el('div', { class: 'segments', role: 'group', 'aria-label': 'Art des Downloads' }, parts.modeVideo, parts.modeAudio),
+        el('div', { class: 'segments', role: 'group', 'aria-label': t('Art des Downloads') }, parts.modeVideo, parts.modeAudio),
         parts.qualityField,
       ),
       parts.sectionRow,
@@ -427,24 +430,24 @@ function buildPage(root) {
     ),
     el('section', { class: 'card stack' },
       el('div', { class: 'folder-row' },
-        el('span', { class: 'muted' }, 'Zielordner'),
+        el('span', { class: 'muted' }, t('Zielordner')),
         parts.folder,
-        el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern'),
+        el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern')),
       ),
-      el('label', { class: 'check' }, parts.openInCut, el('span', {}, 'Nach dem Download im Bereich Schneiden öffnen')),
-      el('div', {}, el('button', { class: 'button primary large', onclick: startDownload }, 'Herunterladen')),
+      el('label', { class: 'check' }, parts.openInCut, el('span', {}, t('Nach dem Download im Bereich Schneiden öffnen'))),
+      el('div', {}, el('button', { class: 'button primary large', onclick: startDownload }, t('Herunterladen'))),
     ),
   );
 
   root.append(
-    pageHeader('Download', 'Link einfügen, Qualität wählen, fertig.'),
+    pageHeader('Download', t('Link einfügen, Qualität wählen, fertig.')),
     el('section', { class: 'card' }, el('div', { class: 'url-row' }, parts.url, parts.load)),
     parts.message,
     parts.playlistNote,
     parts.result,
     parts.playlistView,
     el('section', { class: 'card stack history' },
-      el('div', { class: 'section-head' }, el('h2', {}, 'Verlauf'), parts.historyClear),
+      el('div', { class: 'section-head' }, el('h2', {}, t('Verlauf')), parts.historyClear),
       parts.historyEmpty,
       parts.history,
     ),

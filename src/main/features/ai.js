@@ -13,14 +13,15 @@ const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
 const { exec, findPython, findGpu, folderSizeGb, downloadFile, pythonScript } = require('../core/python-tools');
 const { effectFilter, even } = require('./censor');
+const { t } = require('../core/i18n');
 
 const MODEL_BASE = 'https://dl.fbaipublicfiles.com/segment_anything_2/092824';
 const SAM2_PACKAGE = 'https://github.com/facebookresearch/sam2/archive/refs/heads/main.zip';
 const MODELS = [
-  { id: 'tiny', file: 'sam2.1_hiera_tiny.pt', label: 'Tiny', sizeMb: 149, text: 'Am schnellsten, etwas ungenauer' },
-  { id: 'small', file: 'sam2.1_hiera_small.pt', label: 'Small', sizeMb: 176, text: 'Guter Mittelweg', recommended: true },
-  { id: 'base_plus', file: 'sam2.1_hiera_base_plus.pt', label: 'Base+', sizeMb: 309, text: 'Genauer, braucht mehr Grafikspeicher' },
-  { id: 'large', file: 'sam2.1_hiera_large.pt', label: 'Large', sizeMb: 856, text: 'Am genauesten, am langsamsten' },
+  { id: 'tiny', file: 'sam2.1_hiera_tiny.pt', label: 'Tiny', sizeMb: 149, text: t('Am schnellsten, etwas ungenauer') },
+  { id: 'small', file: 'sam2.1_hiera_small.pt', label: 'Small', sizeMb: 176, text: t('Guter Mittelweg'), recommended: true },
+  { id: 'base_plus', file: 'sam2.1_hiera_base_plus.pt', label: 'Base+', sizeMb: 309, text: t('Genauer, braucht mehr Grafikspeicher') },
+  { id: 'large', file: 'sam2.1_hiera_large.pt', label: 'Large', sizeMb: 856, text: t('Am genauesten, am langsamsten') },
 ];
 const INSTALL_SIZE_GB = 4.5;
 const MAX_FPS = 30;
@@ -69,7 +70,7 @@ class WorkerClient {
     const pending = this.pending;
     this.pending = null;
     if (message.error === 'memory') {
-      pending?.reject(new UserError('Der Grafikspeicher reicht nicht. Wähle einen kürzeren Abschnitt oder ein kleineres Modell.'));
+      pending?.reject(new UserError(t('Der Grafikspeicher reicht nicht. Wähle einen kürzeren Abschnitt oder ein kleineres Modell.')));
     } else if (message.error) {
       pending?.reject(new Error(message.error));
     } else {
@@ -102,7 +103,7 @@ function register({ ipcMain, queue, store, tools, send }) {
   const modelPath = (model) => path.join(modelDir, model.file);
   const findModel = (id) => {
     const model = MODELS.find((entry) => entry.id === id);
-    if (!model) throw new UserError('Dieses Modell gibt es nicht.');
+    if (!model) throw new UserError(t('Dieses Modell gibt es nicht.'));
     return model;
   };
 
@@ -159,15 +160,15 @@ function register({ ipcMain, queue, store, tools, send }) {
 
   async function runInstall(job) {
     const python = await findPython();
-    if (!python) throw new UserError('Python wurde nicht gefunden.');
+    if (!python) throw new UserError(t('Python wurde nicht gefunden.'));
     const hasNvidia = Boolean(await exec('nvidia-smi', ['-L']));
     const torchIndex = `https://download.pytorch.org/whl/${hasNvidia ? 'cu128' : 'cpu'}`;
 
     await fs.mkdir(root, { recursive: true });
-    job.update({ detail: 'Richtet Umgebung ein', progress: 2 });
+    job.update({ detail: t('Richtet Umgebung ein'), progress: 2 });
     await run(python.path, ['-m', 'venv', envDir], { signal: job.signal });
-    await runPip(['torch', 'torchvision', '--index-url', torchIndex], job, 'Lädt PyTorch, das dauert einige Minuten', 10);
-    await runPip([SAM2_PACKAGE], job, 'Installiert SAM 2.1', 80);
+    await runPip(['torch', 'torchvision', '--index-url', torchIndex], job, t('Lädt PyTorch, das dauert einige Minuten'), 10);
+    await runPip([SAM2_PACKAGE], job, t('Installiert SAM 2.1'), 80);
     await fs.writeFile(markerFile, new Date().toISOString(), 'utf8');
   }
 
@@ -178,7 +179,7 @@ function register({ ipcMain, queue, store, tools, send }) {
       signal: job.signal,
       onProgress: (bytes, total) => {
         loaded += bytes;
-        job.update({ progress: total ? (loaded / total) * 100 : null, detail: `Lädt Modell ${model.label}` });
+        job.update({ progress: total ? (loaded / total) * 100 : null, detail: t('Lädt Modell {name}', { name: model.label }) });
       },
     });
   }
@@ -209,7 +210,7 @@ function register({ ipcMain, queue, store, tools, send }) {
     const fps = Math.round(Math.min(media.fps, MAX_FPS) * 1000) / 1000;
     const { start, end } = options;
 
-    job.update({ detail: 'Bereitet Bilder vor', progress: 0 });
+    job.update({ detail: t('Bereitet Bilder vor'), progress: 0 });
     await runFfmpeg(tools.path('ffmpeg'), [
       '-ss', start.toFixed(3), '-to', end.toFixed(3), '-i', media.path,
       '-vf', `fps=${fps},scale=-2:'min(${MAX_FRAME_HEIGHT},ih)'`,
@@ -217,10 +218,10 @@ function register({ ipcMain, queue, store, tools, send }) {
     ], {
       duration: end - start,
       signal: job.signal,
-      onProgress: (part) => job.update({ progress: part * 40, detail: 'Bereitet Bilder vor' }),
+      onProgress: (part) => job.update({ progress: part * 40, detail: t('Bereitet Bilder vor') }),
     });
 
-    job.update({ detail: 'Lädt KI-Modell', progress: 45 });
+    job.update({ detail: t('Lädt KI-Modell'), progress: 45 });
     const model = findModel(options.model);
     const client = await getWorker();
     const cancel = () => client.kill(true);
@@ -239,7 +240,7 @@ function register({ ipcMain, queue, store, tools, send }) {
     const cancel = () => client.kill(true);
     job.signal.addEventListener('abort', cancel, { once: true });
     await client.request({ type: 'track', masks, previews }, (part) => {
-      job.update({ progress: part * 100, detail: 'Verfolgt Objekt' });
+      job.update({ progress: part * 100, detail: t('Verfolgt Objekt') });
     });
     job.signal.removeEventListener('abort', cancel);
     session.tracked = true;
@@ -287,9 +288,9 @@ function register({ ipcMain, queue, store, tools, send }) {
         ], {
           duration: end - start,
           signal: job.signal,
-          onProgress: (part) => job.update({ progress: part * 100, detail: 'Erstellt Alpha-Maske' }),
+          onProgress: (part) => job.update({ progress: part * 100, detail: t('Erstellt Alpha-Maske') }),
         });
-        return await moveFile(output, options.folder, `${name} (Alpha-Maske).${ext}`);
+        return await moveFile(output, options.folder, `${name} (${t('Alpha-Maske')}).${ext}`);
       }
 
       if (options.effect === 'transparent') {
@@ -301,9 +302,9 @@ function register({ ipcMain, queue, store, tools, send }) {
         ], {
           duration: end - start,
           signal: job.signal,
-          onProgress: (part) => job.update({ progress: part * 100, detail: 'Stellt frei' }),
+          onProgress: (part) => job.update({ progress: part * 100, detail: t('Stellt frei') }),
         });
-        return await moveFile(output, options.folder, `${name} (freigestellt).webm`);
+        return await moveFile(output, options.folder, `${name} (${t('freigestellt')}).webm`);
       }
 
       const output = path.join(temp, 'ergebnis.mp4');
@@ -324,9 +325,9 @@ function register({ ipcMain, queue, store, tools, send }) {
       ], {
         duration: media.duration,
         signal: job.signal,
-        onProgress: (part) => job.update({ progress: part * 100, detail: 'Rechnet Maske ein' }),
+        onProgress: (part) => job.update({ progress: part * 100, detail: t('Rechnet Maske ein') }),
       });
-      return await moveFile(output, options.folder, `${name} (KI-Maske).mp4`);
+      return await moveFile(output, options.folder, `${name} (${t('KI-Maske')}).mp4`);
     } finally {
       await fs.rm(temp, { recursive: true, force: true }).catch(() => {});
     }
@@ -344,7 +345,7 @@ function register({ ipcMain, queue, store, tools, send }) {
   // Ein Abbruch beendet den KI-Dienst, die Klicks und das geladene Video sind dann weg.
   function requireWorker() {
     if (!session || !worker || worker.closed) {
-      throw new UserError('Die KI wurde beendet. Bereite den Abschnitt bitte neu vor.');
+      throw new UserError(t('Die KI wurde beendet. Bereite den Abschnitt bitte neu vor.'));
     }
     return worker;
   }
@@ -354,7 +355,7 @@ function register({ ipcMain, queue, store, tools, send }) {
 
   handle('ai:install', () => {
     queue.add({
-      title: 'KI-Paket installieren',
+      title: t('KI-Paket installieren'),
       kind: 'ai',
       run: (job) => runInstall(job).finally(refreshSlowInfo),
     });
@@ -363,7 +364,7 @@ function register({ ipcMain, queue, store, tools, send }) {
   handle('ai:downloadModel', (id) => {
     const model = findModel(id);
     queue.add({
-      title: `KI-Modell ${model.label}`,
+      title: t('KI-Modell {name}', { name: model.label }),
       kind: 'ai',
       run: (job) => runDownload(model, job).finally(refreshSlowInfo),
     });
@@ -391,7 +392,7 @@ function register({ ipcMain, queue, store, tools, send }) {
     const media = await probeMedia(tools.path('ffprobe'), options.filePath);
     await new Promise((resolve, reject) => {
       queue.add({
-        title: `Vorbereiten: ${media.name}`,
+        title: t('Vorbereiten: {name}', { name: media.name }),
         kind: 'ai',
         run: (job) => runPrepare(options, media, job).then(resolve, (error) => {
           reject(error);
@@ -420,7 +421,7 @@ function register({ ipcMain, queue, store, tools, send }) {
   handle('ai:track', async () => {
     await new Promise((resolve, reject) => {
       queue.add({
-        title: `Verfolgen: ${session.media.name}`,
+        title: t('Verfolgen: {name}', { name: session.media.name }),
         kind: 'ai',
         run: (job) => runTrack(job).then(resolve, (error) => {
           reject(error);
@@ -432,7 +433,7 @@ function register({ ipcMain, queue, store, tools, send }) {
   });
 
   handle('ai:export', (options) => {
-    if (!session?.tracked) throw new UserError('Bitte verfolge das Objekt zuerst.');
+    if (!session?.tracked) throw new UserError(t('Bitte verfolge das Objekt zuerst.'));
     queue.add({ title: session.media.name, kind: 'ai', run: (job) => runExport(options, job) });
   });
 

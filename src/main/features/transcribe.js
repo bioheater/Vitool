@@ -14,16 +14,17 @@ const { moveFile, uniquePath } = require('../core/files');
 const { FORMATS } = require('./transcript-formats');
 const { STYLES, lookFor, cuesFor, toAss } = require('./subtitle-styles');
 const { commonArgs } = require('./download');
+const { t } = require('../core/i18n');
 
 const LINK_FILE_MARKER = 'VITOOLFILE|';
 const LINK_PROGRESS_MARKER = 'VITOOLPROGRESS|';
 
 const HF_BASE = 'https://huggingface.co';
 const MODELS = [
-  { id: 'small', repo: 'Systran/faster-whisper-small', label: 'Small', sizeMb: 464, text: 'Schnell, gut bei klarer Sprache' },
-  { id: 'medium', repo: 'Systran/faster-whisper-medium', label: 'Medium', sizeMb: 1460, text: 'Genauer, deutlich langsamer' },
-  { id: 'turbo', repo: 'mobiuslabsgmbh/faster-whisper-large-v3-turbo', label: 'Large Turbo', sizeMb: 1547, text: 'Sehr genau und trotzdem schnell', recommended: true },
-  { id: 'large', repo: 'Systran/faster-whisper-large-v3', label: 'Large', sizeMb: 2948, text: 'Am genauesten, am langsamsten' },
+  { id: 'small', repo: 'Systran/faster-whisper-small', label: 'Small', sizeMb: 464, text: t('Schnell, gut bei klarer Sprache') },
+  { id: 'medium', repo: 'Systran/faster-whisper-medium', label: 'Medium', sizeMb: 1460, text: t('Genauer, deutlich langsamer') },
+  { id: 'turbo', repo: 'mobiuslabsgmbh/faster-whisper-large-v3-turbo', label: 'Large Turbo', sizeMb: 1547, text: t('Sehr genau und trotzdem schnell'), recommended: true },
+  { id: 'large', repo: 'Systran/faster-whisper-large-v3', label: 'Large', sizeMb: 2948, text: t('Am genauesten, am langsamsten') },
 ];
 const INSTALL_SIZE_GB = 1.5;
 const INSTALL_SIZE_CPU_GB = 0.2;
@@ -47,7 +48,7 @@ function register({ ipcMain, queue, store, tools, send }) {
   const modelPath = (model) => path.join(modelDir, model.id);
   const findModel = (id) => {
     const model = MODELS.find((entry) => entry.id === id);
-    if (!model) throw new UserError('Dieses Modell gibt es nicht.');
+    if (!model) throw new UserError(t('Dieses Modell gibt es nicht.'));
     return model;
   };
 
@@ -89,15 +90,15 @@ function register({ ipcMain, queue, store, tools, send }) {
 
   async function runInstall(job) {
     const python = await findPython();
-    if (!python) throw new UserError('Python wurde nicht gefunden.');
+    if (!python) throw new UserError(t('Python wurde nicht gefunden.'));
     const hasNvidia = Boolean(await exec('nvidia-smi', ['-L']));
     // Für die Grafikkarte braucht faster-whisper die CUDA-Bibliotheken, die es als Python-Pakete gibt.
     const packages = ['faster-whisper', ...(hasNvidia ? ['nvidia-cublas-cu12', 'nvidia-cudnn-cu12==9.*'] : [])];
 
     await fs.mkdir(root, { recursive: true });
-    job.update({ detail: 'Richtet Umgebung ein', progress: 2 });
+    job.update({ detail: t('Richtet Umgebung ein'), progress: 2 });
     await run(python.path, ['-m', 'venv', envDir], { signal: job.signal });
-    job.update({ detail: hasNvidia ? 'Lädt Whisper und Grafikkarten-Bibliotheken, das dauert einige Minuten' : 'Lädt Whisper', progress: 10 });
+    job.update({ detail: hasNvidia ? t('Lädt Whisper und Grafikkarten-Bibliotheken, das dauert einige Minuten') : t('Lädt Whisper'), progress: 10 });
     await run(envPython, ['-m', 'pip', 'install', '--disable-pip-version-check', ...packages], { signal: job.signal });
     await fs.writeFile(markerFile, new Date().toISOString(), 'utf8');
   }
@@ -122,7 +123,7 @@ function register({ ipcMain, queue, store, tools, send }) {
           signal: job.signal,
           onProgress: (bytes) => {
             loaded += bytes;
-            job.update({ progress: (loaded / total) * 100, detail: `Lädt Modell ${model.label}` });
+            job.update({ progress: (loaded / total) * 100, detail: t('Lädt Modell {name}', { name: model.label }) });
           },
         });
       }
@@ -142,7 +143,7 @@ function register({ ipcMain, queue, store, tools, send }) {
     let release;
     transcribeLock = new Promise((resolve) => { release = resolve; });
     try {
-      job.update({ detail: 'Wartet auf die vorige Transkription', progress: null });
+      job.update({ detail: t('Wartet auf die vorige Transkription'), progress: null });
       await Promise.race([
         previous,
         new Promise((_resolve, reject) => {
@@ -165,11 +166,11 @@ function register({ ipcMain, queue, store, tools, send }) {
     const jobFile = path.join(temp, 'auftrag.json');
 
     try {
-      job.update({ detail: 'Liest den Ton', progress: 0 });
+      job.update({ detail: t('Liest den Ton'), progress: 0 });
       await runFfmpeg(tools.path('ffmpeg'), ['-i', media.path, '-map', '0:a:0', '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', audio], {
         duration: media.duration,
         signal: job.signal,
-        onProgress: (part) => job.update({ progress: part * 5, detail: 'Liest den Ton' }),
+        onProgress: (part) => job.update({ progress: part * 5, detail: t('Liest den Ton') }),
       });
 
       await fs.writeFile(jobFile, JSON.stringify({
@@ -179,7 +180,7 @@ function register({ ipcMain, queue, store, tools, send }) {
         language: options.language || null,
         translate: Boolean(options.translate),
       }), 'utf8');
-      job.update({ detail: 'Lädt Sprachmodell', progress: 5 });
+      job.update({ detail: t('Lädt Sprachmodell'), progress: 5 });
       let device = null;
       let workerError = null;
       const script = pythonScript('whisper_worker.py');
@@ -191,12 +192,12 @@ function register({ ipcMain, queue, store, tools, send }) {
           if (message.device) device = message.device;
           if (message.error) workerError = message.error;
           if (message.progress !== undefined) {
-            const where = device === 'cpu' ? 'Erkennt Sprache (Prozessor, dauert länger)' : 'Erkennt Sprache';
+            const where = device === 'cpu' ? t('Erkennt Sprache (Prozessor, dauert länger)') : t('Erkennt Sprache');
             job.update({ progress: 5 + message.progress * 95, detail: where });
           }
         },
       }).catch((error) => {
-        if (workerError === 'memory') throw new UserError('Der Arbeitsspeicher reicht nicht. Wähle ein kleineres Modell.');
+        if (workerError === 'memory') throw new UserError(t('Der Arbeitsspeicher reicht nicht. Wähle ein kleineres Modell.'));
         if (workerError) throw new Error(workerError);
         throw error;
       });
@@ -211,7 +212,7 @@ function register({ ipcMain, queue, store, tools, send }) {
   // Lädt nur die Tonspur, das geht viel schneller als das ganze Video.
   // Zum Transkribieren genügt der Ton, zum Einbrennen braucht es das Video (höchstens 1080p).
   async function downloadFromLink(url, dir, job, { video = false, share = 1 } = {}) {
-    const label = video ? 'Lädt Video' : 'Lädt Ton';
+    const label = video ? t('Lädt Video') : t('Lädt Ton');
     const format = video
       ? ['-f', 'bv*[height<=1080]+ba/b[height<=1080]/bv*+ba/b', '-S', 'vcodec:h264,acodec:aac', '--merge-output-format', 'mp4']
       : ['-f', 'ba/b'];
@@ -236,7 +237,7 @@ function register({ ipcMain, queue, store, tools, send }) {
         }
       },
     });
-    if (!filePath) throw new Error('Keine Datei erhalten');
+    if (!filePath) throw new Error(t('Keine Datei erhalten'));
     return filePath;
   }
 
@@ -254,7 +255,7 @@ function register({ ipcMain, queue, store, tools, send }) {
         ? await downloadFromLink(options.linkUrl, temp, job, { video: true, share: 0.4 })
         : options.filePath;
       const media = await probeMedia(tools.path('ffprobe'), source);
-      if (!media.hasVideo) throw new UserError('Diese Datei hat kein Bild. Untertitel lassen sich nur in Videos einbrennen.');
+      if (!media.hasVideo) throw new UserError(t('Diese Datei hat kein Bild. Untertitel lassen sich nur in Videos einbrennen.'));
 
       await fs.writeFile(path.join(temp, 'untertitel.ass'), toAss(options.transcript, options, { width: media.width, height: media.height }), 'utf8');
       const output = path.join(temp, 'ergebnis.mp4');
@@ -271,12 +272,12 @@ function register({ ipcMain, queue, store, tools, send }) {
         cwd: temp,
         duration: media.duration,
         signal: job.signal,
-        onProgress: (part) => job.update({ progress: start + part * (100 - start), detail: 'Brennt Untertitel ein' }),
+        onProgress: (part) => job.update({ progress: start + part * (100 - start), detail: t('Brennt Untertitel ein') }),
       });
 
       const name = (options.name || path.parse(media.name).name).replace(/[<>:"/\\|?*]/g, '').trim() || 'Video';
       const folder = fromLink ? store.get('settings').downloadDir : path.dirname(options.filePath);
-      return await moveFile(output, folder, `${name} (mit Untertiteln).mp4`);
+      return await moveFile(output, folder, `${name} (${t('mit Untertiteln')}).mp4`);
     } finally {
       await fs.rm(temp, { recursive: true, force: true }).catch(() => {});
     }
@@ -295,12 +296,12 @@ function register({ ipcMain, queue, store, tools, send }) {
   refreshSlowInfo();
 
   handle('transcribe:install', () => {
-    queue.add({ title: 'Transkription installieren', kind: 'transcribe', run: (job) => runInstall(job).finally(refreshSlowInfo) });
+    queue.add({ title: t('Transkription installieren'), kind: 'transcribe', run: (job) => runInstall(job).finally(refreshSlowInfo) });
   });
 
   handle('transcribe:downloadModel', (id) => {
     const model = findModel(id);
-    queue.add({ title: `Sprachmodell ${model.label}`, kind: 'transcribe', run: (job) => runDownload(model, job).finally(refreshSlowInfo) });
+    queue.add({ title: t('Sprachmodell {name}', { name: model.label }), kind: 'transcribe', run: (job) => runDownload(model, job).finally(refreshSlowInfo) });
   });
 
   handle('transcribe:removeModel', async (id) => {
@@ -321,10 +322,10 @@ function register({ ipcMain, queue, store, tools, send }) {
   // Wartet, bis die Warteschlange fertig ist, und gibt den erkannten Text an die Oberfläche.
   handle('transcribe:start', async (options) => {
     const media = await probeMedia(tools.path('ffprobe'), options.filePath);
-    if (!media.hasAudio) throw new UserError('Diese Datei hat keine Tonspur.');
+    if (!media.hasAudio) throw new UserError(t('Diese Datei hat keine Tonspur.'));
     const transcript = await new Promise((resolve, reject) => {
       queue.add({
-        title: `Transkribieren: ${media.name}`,
+        title: t('Transkribieren: {name}', { name: media.name }),
         kind: 'transcribe',
         run: (job) => runTranscribe(options, media, job).then((result) => {
           resolve(result);
@@ -342,7 +343,7 @@ function register({ ipcMain, queue, store, tools, send }) {
     if (!/^https?:\/\//i.test(url ?? '')) throw new UserError('Bitte gib einen gültigen Link ein.');
     const filePath = await new Promise((resolve, reject) => {
       queue.add({
-        title: `Ton aus Link laden (${new URL(url).hostname.replace(/^www\./, '')})`,
+        title: t('Ton aus Link laden ({site})', { site: new URL(url).hostname.replace(/^www\./, '') }),
         kind: 'transcribe',
         run: (job) => runLinkDownload(url, job).then((result) => {
           resolve(result);
@@ -360,11 +361,11 @@ function register({ ipcMain, queue, store, tools, send }) {
   // Ton aus einem Link liegt im Temp-Ordner, dort soll niemand speichern. Dann gilt der Download-Ordner.
   handle('transcribe:export', async ({ format, transcript, filePath, fromLink }) => {
     const target = FORMATS[format];
-    if (!target) throw new UserError('Dieses Format gibt es nicht.');
+    if (!target) throw new UserError(t('Dieses Format gibt es nicht.'));
     const parsed = path.parse(filePath);
     const folder = fromLink ? store.get('settings').downloadDir : parsed.dir;
     const result = await dialog.showSaveDialog(BrowserWindow.getFocusedWindow(), {
-      title: `${target.label} speichern`,
+      title: t('{format} speichern', { format: target.label }),
       defaultPath: path.join(folder, `${parsed.name}${target.suffix ?? ''}.${target.ext}`),
       filters: [{ name: target.label, extensions: [target.ext] }],
     });
@@ -376,7 +377,7 @@ function register({ ipcMain, queue, store, tools, send }) {
   // Stapel: Jede Datei wird ein eigener Auftrag, die Ergebnisse landen ohne Nachfrage neben dem Original.
   async function runBatchFile(filePath, options, job) {
     const media = await probeMedia(tools.path('ffprobe'), filePath);
-    if (!media.hasAudio) throw new UserError('Diese Datei hat keine Tonspur.');
+    if (!media.hasAudio) throw new UserError(t('Diese Datei hat keine Tonspur.'));
     const transcript = await runTranscribe(options, media, job);
     const { dir, name } = path.parse(filePath);
     let first = null;
@@ -390,14 +391,14 @@ function register({ ipcMain, queue, store, tools, send }) {
   }
 
   handle('transcribe:batch', (options) => {
-    if (!options.files?.length) throw new UserError('Bitte wähle mindestens eine Datei.');
+    if (!options.files?.length) throw new UserError(t('Bitte wähle mindestens eine Datei.'));
     if (!options.formats?.length || options.formats.some((format) => !FORMATS[format])) {
-      throw new UserError('Bitte wähle mindestens ein Format zum Speichern.');
+      throw new UserError(t('Bitte wähle mindestens ein Format zum Speichern.'));
     }
     findModel(options.model);
     options.files.forEach((filePath) => {
       queue.add({
-        title: `Transkribieren: ${path.basename(filePath)}`,
+        title: t('Transkribieren: {name}', { name: path.basename(filePath) }),
         kind: 'transcribe',
         run: (job) => runBatchFile(filePath, options, job),
       });
@@ -407,15 +408,15 @@ function register({ ipcMain, queue, store, tools, send }) {
 
   // Die Vorschau bekommt dieselben Untertitel und Maße wie das eingebrannte Video.
   handle('transcribe:cues', ({ transcript, options, video }) => {
-    if (!STYLES[options.style]) throw new UserError('Diesen Style gibt es nicht.');
+    if (!STYLES[options.style]) throw new UserError(t('Diesen Style gibt es nicht.'));
     return { cues: cuesFor(transcript, options, video), look: lookFor(options, video) };
   });
 
   handle('transcribe:burn', (options) => {
-    if (!STYLES[options.style]) throw new UserError('Diesen Style gibt es nicht.');
-    if (!options.transcript?.segments?.length) throw new UserError('Es gibt noch keinen Text zum Einbrennen.');
+    if (!STYLES[options.style]) throw new UserError(t('Diesen Style gibt es nicht.'));
+    if (!options.transcript?.segments?.length) throw new UserError(t('Es gibt noch keinen Text zum Einbrennen.'));
     queue.add({
-      title: `Untertitel einbrennen: ${options.name}`,
+      title: t('Untertitel einbrennen: {name}', { name: options.name }),
       kind: 'transcribe',
       run: (job) => runBurn(options, job),
     });

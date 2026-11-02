@@ -56,6 +56,9 @@ const INVOKE_CHANNELS = [
   'transcribe:burn',
   'transcribe:batch',
   'transcribe:export',
+  'app:setLanguage',
+  'app:restart',
+  'app:info',
 ];
 
 const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged'];
@@ -76,4 +79,6 @@ contextBridge.exposeInMainWorld('vitool', {
     return () => ipcRenderer.removeListener(channel, listener);
   },
   pathForFile: (file) => webUtils.getPathForFile(file),
+  // Einmal beim Start und synchron, damit jede Seite ihre Texte schon beim Laden übersetzen kann.
+  i18n: ipcRenderer.sendSync('i18n:get'),
 });

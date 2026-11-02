@@ -3,6 +3,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { run } = require('./process-runner');
 const { UserError } = require('./error-messages');
+const { t } = require('./i18n');
 
 // onProgress erhält den Anteil von 0 bis 1, bezogen auf die Länge des Ergebnisses.
 function runFfmpeg(ffmpeg, args, { duration, onProgress, signal, cwd, writeInput } = {}) {
@@ -31,7 +32,7 @@ async function probeMedia(ffprobe, filePath) {
   try {
     await fs.access(filePath);
   } catch {
-    throw new UserError('Diese Datei wurde nicht gefunden. Vielleicht wurde sie verschoben.');
+    throw new UserError(t('Diese Datei wurde nicht gefunden. Vielleicht wurde sie verschoben.'));
   }
 
   const { stdout } = await run(ffprobe, [
@@ -43,7 +44,7 @@ async function probeMedia(ffprobe, filePath) {
   const duration = Number(format.duration);
 
   if ((!video && !audio) || !duration) {
-    throw new UserError('Diese Datei enthält kein lesbares Video oder Audio.');
+    throw new UserError(t('Diese Datei enthält kein lesbares Video oder Audio.'));
   }
 
   // Handyvideos sind oft gedreht gespeichert, angezeigt wird aber die gedrehte Größe.
@@ -65,4 +66,24 @@ async function probeMedia(ffprobe, filePath) {
   };
 }
 
-module.exports = { runFfmpeg, concatFiles, probeMedia };
+// Kodieren über die NVIDIA-Grafikkarte (NVENC) entlastet den Prozessor stark. Ob es geht, zeigt ein
+// Probelauf mit einem einzigen Bild; ohne passende Karte oder Treiber bleibt es beim Prozessor (x264).
+let gpuEncoderCheck = null;
+
+function hasGpuEncoder(ffmpeg) {
+  gpuEncoderCheck ??= run(ffmpeg, [
+    '-hide_banner', '-nostdin', '-f', 'lavfi', '-i', 'color=black:s=256x256:d=0.1',
+    '-frames:v', '1', '-c:v', 'h264_nvenc', '-f', 'null', '-',
+  ]).then(() => true, () => false);
+  return gpuEncoderCheck;
+}
+
+// Qualität wie bisher bei x264 mit CRF 18.
+async function videoEncoderArgs(ffmpeg) {
+  if (await hasGpuEncoder(ffmpeg)) {
+    return ['-c:v', 'h264_nvenc', '-preset', 'p5', '-tune', 'hq', '-rc', 'vbr', '-cq', '19', '-b:v', '0', '-pix_fmt', 'yuv420p'];
+  }
+  return ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p'];
+}
+
+module.exports = { runFfmpeg, concatFiles, probeMedia, videoEncoderArgs };

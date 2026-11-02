@@ -1,3 +1,4 @@
+const { t } = require('../core/i18n');
 // Macht aus den erkannten Sätzen Untertitel und Textdateien.
 const MAX_LINE = 42;
 const MAX_CUE_CHARS = MAX_LINE * 2;
@@ -117,10 +118,10 @@ function toJson(transcript) {
 }
 
 const FORMATS = {
-  srt: { label: 'SRT-Untertitel', ext: 'srt', build: (transcript) => toSrt(transcript.segments) },
-  vtt: { label: 'WebVTT-Untertitel', ext: 'vtt', build: (transcript) => toVtt(transcript.segments) },
-  txt: { label: 'Text', ext: 'txt', build: (transcript) => toText(transcript.segments) },
-  timed: { label: 'Text mit Zeitangaben', ext: 'txt', suffix: ' (mit Zeiten)', build: (transcript) => toTimedText(transcript.segments) },
+  srt: { label: t('SRT-Untertitel'), ext: 'srt', build: (transcript) => toSrt(transcript.segments) },
+  vtt: { label: t('WebVTT-Untertitel'), ext: 'vtt', build: (transcript) => toVtt(transcript.segments) },
+  txt: { label: t('Text'), ext: 'txt', build: (transcript) => toText(transcript.segments) },
+  timed: { label: t('Text mit Zeitangaben'), ext: 'txt', suffix: t(' (mit Zeiten)'), build: (transcript) => toTimedText(transcript.segments) },
   json: { label: 'JSON', ext: 'json', build: toJson },
 };
 

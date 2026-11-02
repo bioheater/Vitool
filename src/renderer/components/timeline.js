@@ -2,6 +2,7 @@
 // Wird auch im Bereich Schneiden verwendet.
 import { el } from '../utils/dom.js';
 import { formatTime } from '../utils/time.js';
+import { t } from '../utils/i18n.js';
 
 const MIN_LENGTH = 1;
 const KEY_STEP = 1;
@@ -19,8 +20,8 @@ export class Timeline {
     this.rangeLayer = el('div', { class: 'tl-ranges' });
     this.markerLayer = el('div', { class: 'tl-markers' });
     this.playhead = el('div', { class: 'tl-playhead' });
-    this.startHandle = this.createHandle('start', 'Start des Abschnitts');
-    this.endHandle = this.createHandle('end', 'Ende des Abschnitts');
+    this.startHandle = this.createHandle('start', t('Start des Abschnitts'));
+    this.endHandle = this.createHandle('end', t('Ende des Abschnitts'));
     this.track = el('div', { class: 'tl-track' },
       this.rangeLayer, this.markerLayer, this.playhead, this.startHandle, this.endHandle);
     this.ticks = el('div', { class: 'tl-ticks' });

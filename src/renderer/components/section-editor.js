@@ -3,6 +3,7 @@ import { el } from '../utils/dom.js';
 import { formatTime, parseTime } from '../utils/time.js';
 import { Timeline } from './timeline.js';
 import { frameButtons } from './video-controls.js';
+import { t } from '../utils/i18n.js';
 
 export class SectionEditor {
   constructor({ video, onMessage, createRange, single = false }) {
@@ -27,9 +28,9 @@ export class SectionEditor {
     this.mergeSeparate = el('input', { type: 'radio', onchange: () => { this.merge = false; } });
     this.mergeTogether = el('input', { type: 'radio', onchange: () => { this.merge = true; } });
     this.mergeField = el('fieldset', { class: 'choices', hidden: true },
-      el('legend', {}, 'Mehrere Abschnitte speichern'),
-      el('label', {}, this.mergeSeparate, 'Als einzelne Dateien'),
-      el('label', {}, this.mergeTogether, 'Zu einer Datei zusammenfügen'),
+      el('legend', {}, t('Mehrere Abschnitte speichern')),
+      el('label', {}, this.mergeSeparate, t('Als einzelne Dateien')),
+      el('label', {}, this.mergeTogether, t('Zu einer Datei zusammenfügen')),
     );
     // Jede Instanz braucht eine eigene Gruppe, sonst beeinflussen sich die Seiten gegenseitig.
     this.mergeSeparate.name = this.mergeTogether.name = `merge-${Math.random()}`;
@@ -38,7 +39,7 @@ export class SectionEditor {
       el('div', { class: 'marker-row' }, ...frameButtons(video)),
       timelineRoot,
       this.list,
-      single ? null : el('div', {}, el('button', { class: 'button', onclick: () => this.add() }, 'Abschnitt hinzufügen')),
+      single ? null : el('div', {}, el('button', { class: 'button', onclick: () => this.add() }, t('Abschnitt hinzufügen'))),
       this.mergeField,
     );
 
@@ -120,8 +121,8 @@ export class SectionEditor {
     const next = { ...range, [edge]: Math.round(time * 10) / 10 };
     if (next.start >= next.end) {
       this.onMessage(edge === 'start'
-        ? 'Der Start muss vor dem Ende liegen.'
-        : 'Das Ende muss nach dem Start liegen.');
+        ? t('Der Start muss vor dem Ende liegen.')
+        : t('Das Ende muss nach dem Start liegen.'));
       return;
     }
     this.onMessage('');
@@ -158,7 +159,7 @@ export class SectionEditor {
     const next = { ...range, [edge]: value };
     if (value === null || next.start >= next.end || next.end > this.duration) {
       input.value = formatTime(range[edge], true);
-      this.onMessage('Diese Zeit passt nicht. Nutze zum Beispiel 01:30 und bleibe innerhalb der Videolänge.');
+      this.onMessage(t('Diese Zeit passt nicht. Nutze zum Beispiel 01:30 und bleibe innerhalb der Videolänge.'));
       return;
     }
     this.onMessage('');
@@ -172,7 +173,7 @@ export class SectionEditor {
     const input = el('input', {
       class: 'input time',
       value: formatTime(this.ranges[index][edge], true),
-      'aria-label': `${label} Abschnitt ${index + 1}`,
+      'aria-label': t('{label} Abschnitt {number}', { label, number: index + 1 }),
       onfocus: () => this.select(index),
       onchange: () => this.commitTime(index, edge, input),
       onkeydown: (event) => {
@@ -186,13 +187,13 @@ export class SectionEditor {
     this.timeline.update(this.ranges, this.active);
     this.list.replaceChildren(...this.ranges.map((range, index) =>
       el('li', { class: `section-row ${index === this.active ? 'active' : ''}` },
-        el('span', { class: 'section-name' }, `Abschnitt ${index + 1}`),
+        el('span', { class: 'section-name' }, t('Abschnitt {number}', { number: index + 1 })),
         this.timeInput(index, 'start', 'Start'),
         el('span', { class: 'muted' }, 'bis'),
-        this.timeInput(index, 'end', 'Ende'),
+        this.timeInput(index, 'end', t('Ende')),
         el('span', { class: 'muted section-length' }, formatTime(range.end - range.start, true)),
         this.ranges.length > 1
-          ? el('button', { class: 'button small', onclick: () => this.remove(index) }, 'Entfernen')
+          ? el('button', { class: 'button small', onclick: () => this.remove(index) }, t('Entfernen'))
           : null,
       )));
 

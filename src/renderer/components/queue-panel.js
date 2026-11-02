@@ -1,6 +1,9 @@
 // Zeigt laufende und fertige Aufgaben unten im Fenster.
 // Zeilen bleiben bestehen und ändern nur Text und Balken, sonst würde die Liste bei jedem Schritt springen.
 import { el } from '../utils/dom.js';
+import { isMediaFile } from '../utils/navigation.js';
+import { createSendTo } from './send-to.js';
+import { t } from '../utils/i18n.js';
 
 const STATUS_CLASS = { done: 'ok', failed: 'bad', canceled: 'muted' };
 
@@ -40,9 +43,12 @@ function updateRow(row, job) {
   row.status = job.status;
   row.actions.replaceChildren();
   if (isActive(job)) {
-    row.actions.append(el('button', { class: 'button small', onclick: () => window.vitool.invoke('queue:cancel', job.id) }, 'Abbrechen'));
+    row.actions.append(el('button', { class: 'button small', onclick: () => window.vitool.invoke('queue:cancel', job.id) }, t('Abbrechen')));
   } else if (job.resultPath) {
-    row.actions.append(el('button', { class: 'button small', onclick: () => window.vitool.invoke('shell:showFile', job.resultPath) }, 'Im Ordner zeigen'));
+    if (isMediaFile(job.resultPath)) {
+      row.actions.append(createSendTo({ getPath: () => job.resultPath, label: t('Weiter bearbeiten') }));
+    }
+    row.actions.append(el('button', { class: 'button small', onclick: () => window.vitool.invoke('shell:showFile', job.resultPath) }, t('Im Ordner zeigen')));
   }
 }
 
@@ -55,7 +61,7 @@ export function mountQueuePanel(root) {
   const clear = el('button', {
     class: 'button small',
     onclick: () => window.vitool.invoke('queue:clearFinished'),
-  }, 'Erledigte entfernen');
+  }, t('Erledigte entfernen'));
   const toggle = el('button', {
     class: 'button small',
     onclick: () => {
@@ -66,7 +72,7 @@ export function mountQueuePanel(root) {
   const list = el('ul', { class: 'job-list' });
 
   root.append(
-    el('div', { class: 'queue-head' }, el('strong', {}, 'Warteschlange'), count, el('span', { class: 'spacer' }), clear, toggle),
+    el('div', { class: 'queue-head' }, el('strong', {}, t('Warteschlange')), count, el('span', { class: 'spacer' }), clear, toggle),
     list,
   );
 
@@ -78,10 +84,10 @@ export function mountQueuePanel(root) {
 
   function render() {
     const active = jobs.filter(isActive).length;
-    count.textContent = active ? `${active} aktiv` : 'Keine aktiven Aufgaben';
+    count.textContent = active ? t('{count} aktiv', { count: active }) : t('Keine aktiven Aufgaben');
     clear.hidden = !showAll || jobs.length === active;
     toggle.hidden = jobs.length < 2;
-    toggle.textContent = showAll ? 'Weniger anzeigen' : `Alle anzeigen (${jobs.length})`;
+    toggle.textContent = showAll ? t('Weniger anzeigen') : t('Alle anzeigen ({count})', { count: jobs.length });
     list.hidden = jobs.length === 0;
 
     const ids = new Set(jobs.map((job) => job.id));

@@ -3,6 +3,7 @@ const { EventEmitter } = require('events');
 const { randomUUID } = require('crypto');
 const { CanceledError } = require('./process-runner');
 const { toGermanMessage } = require('./error-messages');
+const { t } = require('./i18n');
 
 const MAX_PARALLEL = 2;
 const UPDATE_INTERVAL_MS = 150;
@@ -25,7 +26,7 @@ class JobQueue extends EventEmitter {
       kind,
       status: 'queued',
       progress: null,
-      detail: 'Wartet …',
+      detail: t('Wartet …'),
       error: null,
       resultPath: null,
       run,
@@ -41,9 +42,9 @@ class JobQueue extends EventEmitter {
     const job = this.jobs.find((entry) => entry.id === id);
     if (!job) return;
     if (job.status === 'queued') {
-      this.finish(job, 'canceled', 'Abgebrochen');
+      this.finish(job, 'canceled', t('Abgebrochen'));
     } else if (job.status === 'running') {
-      job.detail = 'Wird abgebrochen …';
+      job.detail = t('Wird abgebrochen …');
       job.controller.abort();
       this.notify(true);
     }
@@ -65,7 +66,7 @@ class JobQueue extends EventEmitter {
 
   async execute(job) {
     job.status = 'running';
-    job.detail = 'Startet …';
+    job.detail = t('Startet …');
     job.controller = new AbortController();
     this.notify(true);
 
@@ -81,13 +82,13 @@ class JobQueue extends EventEmitter {
     try {
       job.resultPath = (await job.run(handle)) ?? null;
       job.progress = 100;
-      this.finish(job, 'done', 'Fertig');
+      this.finish(job, 'done', t('Fertig'));
     } catch (error) {
       if (error instanceof CanceledError) {
-        this.finish(job, 'canceled', 'Abgebrochen');
+        this.finish(job, 'canceled', t('Abgebrochen'));
       } else {
         job.error = toGermanMessage(error);
-        this.finish(job, 'failed', 'Fehlgeschlagen');
+        this.finish(job, 'failed', t('Fehlgeschlagen'));
       }
     }
     this.startNext();

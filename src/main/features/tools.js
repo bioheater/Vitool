@@ -7,6 +7,7 @@ const { run } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
 const { AUDIO_FORMATS } = require('./convert');
+const { t } = require('../core/i18n');
 
 const COPY_EXTENSIONS = {
   aac: 'm4a', mp3: 'mp3', opus: 'opus', vorbis: 'ogg', flac: 'flac', ac3: 'ac3',
@@ -21,14 +22,14 @@ function secondsLabel(time) {
 }
 
 function requireVideo(media) {
-  if (!media.hasVideo) throw new UserError('Diese Datei enthält kein Video.');
+  if (!media.hasVideo) throw new UserError(t('Diese Datei enthält kein Video.'));
 }
 
 function gifSteps(options, media, tempDir) {
   requireVideo(media);
   const { start, end, width, fps } = options;
   if (!(end > start) || start < 0 || end > media.duration + 1) {
-    throw new UserError('Bitte wähle einen gültigen Abschnitt für das GIF.');
+    throw new UserError(t('Bitte wähle einen gültigen Abschnitt für das GIF.'));
   }
   const scale = width ? `,scale=${width}:-2:flags=lanczos` : '';
   const filter = `fps=${fps}${scale},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4`;
@@ -39,12 +40,12 @@ function gifSteps(options, media, tempDir) {
     fileName: `${path.parse(media.name).name}.gif`,
     args: ['-ss', start.toFixed(3), '-to', end.toFixed(3), '-i', media.path, '-filter_complex', filter, '-loop', '0', output],
     duration: end - start,
-    label: 'Erstellt GIF',
+    label: t('Erstellt GIF'),
   };
 }
 
 function audioSteps(options, media, tempDir) {
-  if (!media.hasAudio) throw new UserError('Diese Datei enthält keine Tonspur.');
+  if (!media.hasAudio) throw new UserError(t('Diese Datei enthält keine Tonspur.'));
   const baseName = path.parse(media.name).name;
 
   if (options.format === 'original') {
@@ -55,19 +56,19 @@ function audioSteps(options, media, tempDir) {
       fileName: `${baseName} (Audio).${ext}`,
       args: ['-i', media.path, '-vn', '-map', '0:a:0', '-c:a', 'copy', output],
       duration: media.duration,
-      label: 'Extrahiert Audio',
+      label: t('Extrahiert Audio'),
     };
   }
 
   const format = AUDIO_FORMATS[options.format];
-  if (!format) throw new UserError('Dieses Format wird nicht unterstützt.');
+  if (!format) throw new UserError(t('Dieses Format wird nicht unterstützt.'));
   const output = path.join(tempDir, `ergebnis.${options.format}`);
   return {
     output,
     fileName: `${baseName} (Audio).${options.format}`,
     args: ['-i', media.path, '-vn', '-map', '0:a:0', '-c:a', format.codec, ...format.quality, output],
     duration: media.duration,
-    label: 'Extrahiert Audio',
+    label: t('Extrahiert Audio'),
   };
 }
 
@@ -78,9 +79,9 @@ function frameSteps(options, media, tempDir) {
   const quality = ext === 'jpg' ? ['-q:v', '2'] : [];
   return {
     output,
-    fileName: `${path.parse(media.name).name} (Standbild ${secondsLabel(options.time)}).${ext}`,
+    fileName: `${path.parse(media.name).name} (${t('Standbild {time}', { time: secondsLabel(options.time) })}).${ext}`,
     args: ['-ss', options.time.toFixed(3), '-i', media.path, '-frames:v', '1', ...quality, '-update', '1', output],
-    label: 'Speichert Standbild',
+    label: t('Speichert Standbild'),
   };
 }
 
@@ -96,18 +97,18 @@ function needsLegacyEncoding(bytes) {
 
 async function subtitleSteps(options, media, tempDir, ffprobe) {
   requireVideo(media);
-  if (!options.subtitlePath) throw new UserError('Bitte wähle eine Untertitel-Datei.');
+  if (!options.subtitlePath) throw new UserError(t('Bitte wähle eine Untertitel-Datei.'));
 
   const ext = path.extname(options.subtitlePath).toLowerCase();
   const localName = `untertitel${ext}`;
   await fs.copyFile(options.subtitlePath, path.join(tempDir, localName)).catch(() => {
-    throw new UserError('Die Untertitel-Datei wurde nicht gefunden.');
+    throw new UserError(t('Die Untertitel-Datei wurde nicht gefunden.'));
   });
 
   try {
     await run(ffprobe, ['-v', 'error', '-show_entries', 'stream=codec_type', path.join(tempDir, localName)]);
   } catch {
-    throw new UserError('Die Untertitel-Datei lässt sich nicht lesen. Unterstützt werden SRT, ASS und VTT.');
+    throw new UserError(t('Die Untertitel-Datei lässt sich nicht lesen. Unterstützt werden SRT, ASS und VTT.'));
   }
 
   const bytes = await fs.readFile(path.join(tempDir, localName));
@@ -121,7 +122,7 @@ async function subtitleSteps(options, media, tempDir, ffprobe) {
 
   return {
     output,
-    fileName: `${path.parse(media.name).name} (mit Untertiteln).mp4`,
+    fileName: `${path.parse(media.name).name} (${t('mit Untertiteln')}).mp4`,
     args: [
       '-i', media.path, '-map', '0:v:0', ...audio,
       // Über den relativen Namen entfallen die Sonderregeln für Windows-Pfade im Filter.
@@ -129,7 +130,7 @@ async function subtitleSteps(options, media, tempDir, ffprobe) {
       '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output,
     ],
     duration: media.duration,
-    label: 'Brennt Untertitel ein',
+    label: t('Brennt Untertitel ein'),
   };
 }
 
@@ -140,7 +141,7 @@ function register({ ipcMain, queue, tools }) {
       case 'audio': return audioSteps(options, media, tempDir);
       case 'frame': return frameSteps(options, media, tempDir);
       case 'subtitle': return subtitleSteps(options, media, tempDir, tools.path('ffprobe'));
-      default: throw new UserError('Dieses Werkzeug gibt es nicht.');
+      default: throw new UserError(t('Dieses Werkzeug gibt es nicht.'));
     }
   }
 
@@ -162,7 +163,7 @@ function register({ ipcMain, queue, tools }) {
   ipcMain.handle('tools:start', async (_event, options) => {
     let tempDir = null;
     try {
-      if (!options.folder) throw new UserError('Bitte wähle einen Zielordner.');
+      if (!options.folder) throw new UserError(t('Bitte wähle einen Zielordner.'));
       const media = await probeMedia(tools.path('ffprobe'), options.filePath);
       tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-'));
       const step = await prepare(options, media, tempDir);

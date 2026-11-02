@@ -1,11 +1,12 @@
 // Untertitel-Styles zum Einbrennen. Dieselben Werte nutzt die Vorschau, damit beides gleich aussieht.
 // Alle Größen sind Anteile der kürzeren Bildseite, so passen sie zu Quer- und Hochformat.
 const { buildCues } = require('./transcript-formats');
+const { t } = require('../core/i18n');
 
 const STYLES = {
-  classic: { label: 'Klassisch', font: 'Arial', bold: true, size: 0.055, outline: 0.0045, shadow: 0.002 },
+  classic: { label: t('Klassisch'), font: 'Arial', bold: true, size: 0.055, outline: 0.0045, shadow: 0.002 },
   box: { label: 'Box', font: 'Arial', bold: true, size: 0.052, box: 0.012 },
-  highlight: { label: 'Wort für Wort', font: 'Arial', bold: true, size: 0.06, outline: 0.005, shadow: 0.002, highlight: true, maxChars: 48 },
+  highlight: { label: t('Wort für Wort'), font: 'Arial', bold: true, size: 0.06, outline: 0.005, shadow: 0.002, highlight: true, maxChars: 48 },
   pop: { label: 'Pop', font: 'Arial Black', bold: false, size: 0.1, outline: 0.009, shadow: 0.003, highlight: true, upper: true, pop: true, maxChars: 18, maxWords: 3 },
 };
 const SIZES = { small: 0.8, medium: 1, large: 1.25 };

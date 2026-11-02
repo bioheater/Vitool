@@ -8,6 +8,7 @@ const { run } = require('../core/process-runner');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { concatFiles } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
+const { t } = require('../core/i18n');
 
 const FILE_MARKER = 'VITOOLFILE|';
 const PROGRESS_MARKER = 'VITOOLPROGRESS|';
@@ -47,8 +48,8 @@ function normalizeInfo(raw, url) {
   // Reiner Playlist-Link oder ein Video, das zu einer Playlist gehört (YouTube: "list=" im Link).
   const playlist = raw._type === 'playlist' ? 'only' : /[?&]list=/.test(url) ? 'member' : null;
   if (!info) {
-    if (playlist) return { url, title: raw.title ?? 'Playlist', playlist: 'only', heights: [] };
-    throw new UserError('Unter diesem Link wurde kein Video gefunden.');
+    if (playlist) return { url, title: raw.title ?? t('Playlist'), playlist: 'only', heights: [] };
+    throw new UserError(t('Unter diesem Link wurde kein Video gefunden.'));
   }
 
   const formats = info.formats ?? [];
@@ -60,7 +61,7 @@ function normalizeInfo(raw, url) {
 
   return {
     url: info.webpage_url ?? url,
-    title: info.title ?? 'Video',
+    title: info.title ?? t('Video'),
     uploader: info.uploader ?? info.channel ?? null,
     duration: info.is_live ? null : info.duration ?? null,
     thumbnail: info.thumbnail ?? null,
@@ -94,16 +95,16 @@ function normalizePlaylist(raw, url) {
     return {
       index: index + 1,
       url: entryUrl,
-      title: entry.title || titleFromUrl(entryUrl) || `Video ${index + 1}`,
+      title: entry.title || titleFromUrl(entryUrl) || t('Video {number}', { number: index + 1 }),
       duration: entry.duration ?? null,
       thumbnail: entry.thumbnails?.at(-1)?.url ?? entry.thumbnail ?? null,
       available: Boolean(entryUrl) && !UNAVAILABLE_TITLES.includes(entry.title),
     };
   });
-  if (entries.length === 0) throw new UserError('In dieser Playlist wurden keine Videos gefunden.');
+  if (entries.length === 0) throw new UserError(t('In dieser Playlist wurden keine Videos gefunden.'));
   return {
     url: raw.webpage_url ?? url,
-    title: raw.title ?? 'Playlist',
+    title: raw.title ?? t('Playlist'),
     uploader: raw.uploader ?? raw.channel ?? null,
     entries,
   };
@@ -154,23 +155,23 @@ function buildArgs(options, tools, tempDir) {
 
 function validate(options) {
   if (!/^https?:\/\//i.test(options.url ?? '')) throw new UserError('Bitte gib einen gültigen Link ein.');
-  if (!options.folder) throw new UserError('Bitte wähle einen Zielordner.');
+  if (!options.folder) throw new UserError(t('Bitte wähle einen Zielordner.'));
 
   const seen = new Set();
   for (const { start, end } of options.sections) {
-    if (!(end > start) || start < 0) throw new UserError('Bei einem Abschnitt liegt das Ende vor dem Start.');
+    if (!(end > start) || start < 0) throw new UserError(t('Bei einem Abschnitt liegt das Ende vor dem Start.'));
     if (options.duration && end > options.duration + 1) {
-      throw new UserError('Ein Abschnitt geht über das Ende des Videos hinaus.');
+      throw new UserError(t('Ein Abschnitt geht über das Ende des Videos hinaus.'));
     }
     const key = `${start}-${end}`;
-    if (seen.has(key)) throw new UserError('Zwei Abschnitte sind identisch. Entferne bitte einen davon.');
+    if (seen.has(key)) throw new UserError(t('Zwei Abschnitte sind identisch. Entferne bitte einen davon.'));
     seen.add(key);
   }
 }
 
 function mergedName(files) {
   const { name, ext } = path.parse(files[0]);
-  return `${name.replace(/ \[[\d.]+-[\d.]+\]$/, '')} (zusammengefügt)${ext}`;
+  return `${name.replace(/ \[[\d.]+-[\d.]+\]$/, '')} (${t('zusammengefügt')})${ext}`;
 }
 
 // Manche Seiten liefern Vorschau und Bild nur mit passender Herkunftsangabe aus.
@@ -234,7 +235,7 @@ function register({ ipcMain, queue, store, tools, send }) {
       const current = Math.min(finishedSections + 1, sectionCount);
       job.update({
         progress: ((finishedSections + finishedPart) / sectionCount) * 100,
-        detail: sectionCount > 1 ? `Abschnitt ${current} von ${sectionCount}` : 'Lädt Abschnitt',
+        detail: sectionCount > 1 ? t('Abschnitt {number} von {total}', { number: current, total: sectionCount }) : t('Lädt Abschnitt'),
       });
     };
 
@@ -250,10 +251,10 @@ function register({ ipcMain, queue, store, tools, send }) {
     const onStreamProgress = (value, speed, eta) => {
       if (value < lastValue) stream = Math.min(stream + 1, streamCount - 1);
       lastValue = value;
-      const remaining = eta && eta !== 'Unknown' ? `noch ${eta}` : '';
+      const remaining = eta && eta !== 'Unknown' ? t('noch {time}', { time: eta }) : '';
       job.update({
         progress: ((stream + value / 100) / streamCount) * 100,
-        detail: ['Lädt', speed.trim().replace('Unknown B/s', ''), remaining].filter(Boolean).join(' · '),
+        detail: [t('Lädt'), speed.trim().replace('Unknown B/s', ''), remaining].filter(Boolean).join(' · '),
       });
     };
 
@@ -275,13 +276,13 @@ function register({ ipcMain, queue, store, tools, send }) {
     };
 
     try {
-      job.update({ detail: options.sections.length ? 'Lädt Abschnitte …' : 'Lädt …' });
+      job.update({ detail: options.sections.length ? t('Lädt Abschnitte …') : t('Lädt …') });
       await run(tools.path('ytdlp'), buildArgs(options, tools, tempDir), { onLine, signal: job.signal });
-      if (files.length === 0) throw new Error('Keine Datei erhalten');
+      if (files.length === 0) throw new Error(t('Keine Datei erhalten'));
 
       let results = files;
       if (options.merge && files.length > 1) {
-        job.update({ detail: 'Fügt Abschnitte zusammen …', progress: null });
+        job.update({ detail: t('Fügt Abschnitte zusammen …'), progress: null });
         const output = path.join(tempDir, mergedName(files));
         results = [await concatFiles(tools.path('ffmpeg'), files, output, job.signal)];
       }
@@ -347,8 +348,8 @@ function register({ ipcMain, queue, store, tools, send }) {
   // Jedes Video wird ein eigener Auftrag und erscheint einzeln im Verlauf.
   ipcMain.handle('download:playlistStart', async (_event, options) => {
     try {
-      if (!options.folder) throw new UserError('Bitte wähle einen Zielordner.');
-      if (!options.entries?.length) throw new UserError('Bitte wähle mindestens ein Video aus.');
+      if (!options.folder) throw new UserError(t('Bitte wähle einen Zielordner.'));
+      if (!options.entries?.length) throw new UserError(t('Bitte wähle mindestens ein Video aus.'));
       const folder = options.subfolder ? path.join(options.folder, safeFolderName(options.playlistTitle)) : options.folder;
       await fs.mkdir(folder, { recursive: true });
       options.entries.forEach((entry) => {

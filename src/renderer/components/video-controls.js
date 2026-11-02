@@ -1,5 +1,6 @@
 // Bildgenaue Steuerung und Tasten, die immer für das gerade sichtbare Video gelten.
 import { el } from '../utils/dom.js';
+import { t } from '../utils/i18n.js';
 
 const DEFAULT_FPS = 30;
 
@@ -11,8 +12,8 @@ export function stepFrame(video, direction) {
 
 export function frameButtons(video) {
   return [
-    el('button', { class: 'button small', onclick: () => stepFrame(video, -1) }, '◀ Ein Bild zurück'),
-    el('button', { class: 'button small', onclick: () => stepFrame(video, 1) }, 'Ein Bild vor ▶'),
+    el('button', { class: 'button small', onclick: () => stepFrame(video, -1) }, t('◀ Ein Bild zurück')),
+    el('button', { class: 'button small', onclick: () => stepFrame(video, 1) }, t('Ein Bild vor ▶')),
   ];
 }
 

@@ -6,14 +6,16 @@ import toolsPage from './pages/tools.js';
 import mkvPage from './pages/mkv.js';
 import aiPage from './pages/ai.js';
 import transcribePage from './pages/transcribe.js';
+import settingsPage from './pages/settings.js';
 import { mountQueuePanel } from './components/queue-panel.js';
 import { checkTools } from './components/tools-dialog.js';
 import { installVideoKeys } from './components/video-controls.js';
 import { icon } from './utils/dom.js';
 import { ICONS } from './utils/icons.js';
+import { setNavigator } from './utils/navigation.js';
 
 // Neue Bereiche: Seite anlegen und hier eintragen.
-const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage, aiPage, transcribePage];
+const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage, aiPage, transcribePage, settingsPage];
 
 const nav = document.getElementById('nav');
 const pageRoot = document.getElementById('page');
@@ -33,7 +35,8 @@ function showPage(id, data) {
 
 pages.forEach((page) => {
   const button = document.createElement('button');
-  button.className = 'nav-item';
+  // Einstellungen stehen abgesetzt am Ende der Leiste.
+  button.className = page.bottom ? 'nav-item nav-bottom' : 'nav-item';
   button.append(icon(ICONS[page.id]), page.label);
   button.addEventListener('click', () => showPage(page.id));
   nav.append(button);
@@ -47,6 +50,7 @@ pages.forEach((page) => {
 });
 
 window.vitool.on('app:openInCut', (filePath) => showPage('cut', { filePath }));
+setNavigator((id, data) => showPage(id, data));
 
 // Eine Datei, die neben einer Ablagefläche landet, soll nichts auslösen.
 document.addEventListener('dragover', (event) => event.preventDefault());

@@ -1,5 +1,6 @@
 // Player für lokale Dateien. Kann er ein Format nicht abspielen, wird eine Vorschau-Kopie erstellt.
 import { el } from '../utils/dom.js';
+import { t } from '../utils/i18n.js';
 
 export class MediaPlayer {
   constructor() {
@@ -39,7 +40,7 @@ export class MediaPlayer {
     const { path } = this.media;
 
     this.video.hidden = true;
-    this.hint.textContent = 'Dieses Format kann nicht direkt abgespielt werden. Es wird eine Vorschau erstellt …';
+    this.hint.textContent = t('Dieses Format kann nicht direkt abgespielt werden. Es wird eine Vorschau erstellt …');
     this.hint.hidden = false;
 
     const response = await window.vitool.invoke('media:preparePreview', path);
@@ -50,7 +51,7 @@ export class MediaPlayer {
       this.video.hidden = false;
       this.video.src = response.url;
     } else {
-      this.hint.textContent = 'Keine Vorschau möglich. Die Bearbeitung funktioniert trotzdem.';
+      this.hint.textContent = t('Keine Vorschau möglich. Die Bearbeitung funktioniert trotzdem.');
     }
   }
 }

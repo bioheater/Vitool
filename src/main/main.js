@@ -6,10 +6,11 @@ const { Store } = require('./core/store');
 const { JobQueue } = require('./core/job-queue');
 const { ToolChecker } = require('./core/tools-check');
 const { listMediaFiles } = require('./core/files');
+const { t, currentLanguage, translations, LANGUAGES } = require('./core/i18n');
 
 const VIDEO_FILTERS = [
-  { name: 'Videos und Audio', extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'mp3', 'm4a', 'wav', 'flac', 'ogg', 'opus', 'aac'] },
-  { name: 'Alle Dateien', extensions: ['*'] },
+  { name: t('Videos und Audio'), extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'mp3', 'm4a', 'wav', 'flac', 'ogg', 'opus', 'aac'] },
+  { name: t('Alle Dateien'), extensions: ['*'] },
 ];
 
 // Neue Bereiche: Modul anlegen und hier eintragen.
@@ -46,6 +47,17 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
+  // Ohne Installer läuft Vitool über electron.exe. Damit Anheften an die Taskleiste trotzdem
+  // Vitool mit eigenem Symbol startet, bekommt Windows Startbefehl, Name und Symbol mitgeteilt.
+  if (process.platform === 'win32' && !app.isPackaged) {
+    win.setAppDetails({
+      appId: APP_ID,
+      appIconPath: path.join(__dirname, '..', '..', 'assets', 'icon.ico'),
+      appIconIndex: 0,
+      relaunchCommand: `"${process.execPath}" "${app.getAppPath()}"`,
+      relaunchDisplayName: 'Vitool',
+    });
+  }
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
@@ -56,7 +68,9 @@ function send(channel, data) {
 }
 
 // Damit Windows Vitool in der Taskleiste als eigenes Programm mit eigenem Symbol führt.
-app.setAppUserModelId('Vitool');
+// Muss zur appId des Installers passen, sonst gehören Verknüpfung und Fenster nicht zusammen.
+const APP_ID = 'de.vitool.app';
+app.setAppUserModelId(APP_ID);
 
 app.whenReady().then(() => {
   const store = new Store(path.join(app.getPath('userData'), 'vitool-daten.json'), {
@@ -71,6 +85,23 @@ app.whenReady().then(() => {
 
   queue.on('change', (jobs) => send('queue:update', jobs));
 
+  ipcMain.on('i18n:get', (event) => {
+    event.returnValue = { language: currentLanguage(), strings: translations(), languages: LANGUAGES };
+  });
+  // Ein Sprachwechsel startet Vitool neu, damit wirklich jeder Text in der neuen Sprache erscheint.
+  ipcMain.handle('app:setLanguage', (_event, language) => {
+    if (!LANGUAGES.some((entry) => entry.id === language)) return { ok: false };
+    store.set('settings', { ...store.get('settings'), language });
+    if (queue.list().some((job) => job.status === 'running' || job.status === 'queued')) return { ok: true, restartLater: true };
+    app.relaunch();
+    app.exit(0);
+    return { ok: true };
+  });
+  ipcMain.handle('app:restart', () => {
+    app.relaunch();
+    app.exit(0);
+  });
+  ipcMain.handle('app:info', () => ({ version: app.getVersion(), userData: app.getPath('userData') }));
   ipcMain.handle('tools:check', () => tools.check());
   ipcMain.handle('settings:get', () => store.get('settings'));
   ipcMain.handle('settings:set', (_event, patch) => {
@@ -80,7 +111,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('dialog:pickFolder', async (_event, currentPath) => {
     const result = await dialog.showOpenDialog(win, {
-      title: 'Zielordner wählen',
+      title: t('Zielordner wählen'),
       defaultPath: currentPath,
       properties: ['openDirectory', 'createDirectory'],
     });
@@ -88,7 +119,7 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('dialog:pickVideo', async () => {
     const result = await dialog.showOpenDialog(win, {
-      title: 'Video auswählen',
+      title: t('Video auswählen'),
       properties: ['openFile'],
       filters: VIDEO_FILTERS,
     });
@@ -96,34 +127,34 @@ app.whenReady().then(() => {
   });
   ipcMain.handle('dialog:pickVideos', async () => {
     const result = await dialog.showOpenDialog(win, {
-      title: 'Videos auswählen',
+      title: t('Videos auswählen'),
       properties: ['openFile', 'multiSelections'],
       filters: VIDEO_FILTERS,
     });
     return result.canceled ? [] : result.filePaths;
   });
   ipcMain.handle('dialog:pickVideoFolder', async () => {
-    const result = await dialog.showOpenDialog(win, { title: 'Ordner mit Videos wählen', properties: ['openDirectory'] });
+    const result = await dialog.showOpenDialog(win, { title: t('Ordner mit Videos wählen'), properties: ['openDirectory'] });
     return result.canceled ? [] : listMediaFiles(result.filePaths[0]);
   });
   ipcMain.handle('dialog:pickTrack', async () => {
     const result = await dialog.showOpenDialog(win, {
-      title: 'Spur hinzufügen',
+      title: t('Spur hinzufügen'),
       properties: ['openFile'],
       filters: [
-        { name: 'Audio, Untertitel und Video', extensions: ['mp3', 'm4a', 'aac', 'ac3', 'flac', 'mka', 'ogg', 'opus', 'wav', 'srt', 'ass', 'ssa', 'vtt', 'mkv', 'mp4', 'webm'] },
-        { name: 'Alle Dateien', extensions: ['*'] },
+        { name: t('Audio, Untertitel und Video'), extensions: ['mp3', 'm4a', 'aac', 'ac3', 'flac', 'mka', 'ogg', 'opus', 'wav', 'srt', 'ass', 'ssa', 'vtt', 'mkv', 'mp4', 'webm'] },
+        { name: t('Alle Dateien'), extensions: ['*'] },
       ],
     });
     return result.canceled ? null : result.filePaths[0];
   });
   ipcMain.handle('dialog:pickSubtitle', async () => {
     const result = await dialog.showOpenDialog(win, {
-      title: 'Untertitel auswählen',
+      title: t('Untertitel auswählen'),
       properties: ['openFile'],
       filters: [
-        { name: 'Untertitel', extensions: ['srt', 'ass', 'ssa', 'vtt'] },
-        { name: 'Alle Dateien', extensions: ['*'] },
+        { name: t('Untertitel'), extensions: ['srt', 'ass', 'ssa', 'vtt'] },
+        { name: t('Alle Dateien'), extensions: ['*'] },
       ],
     });
     return result.canceled ? null : result.filePaths[0];

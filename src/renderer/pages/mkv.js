@@ -2,20 +2,22 @@
 import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { createFileDrop } from '../components/file-drop.js';
+import { createSendTo } from '../components/send-to.js';
+import { t } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
 const LANGUAGES = {
-  und: 'Unbestimmt', deu: 'Deutsch', ger: 'Deutsch', eng: 'Englisch', fra: 'Französisch', fre: 'Französisch',
-  spa: 'Spanisch', ita: 'Italienisch', jpn: 'Japanisch', kor: 'Koreanisch', rus: 'Russisch', tur: 'Türkisch',
+  und: t('Unbestimmt'), deu: t('Deutsch'), ger: t('Deutsch'), eng: t('Englisch'), fra: t('Französisch'), fre: t('Französisch'),
+  spa: t('Spanisch'), ita: t('Italienisch'), jpn: t('Japanisch'), kor: t('Koreanisch'), rus: t('Russisch'), tur: t('Türkisch'),
 };
 const LANGUAGE_CHOICES = ['und', 'deu', 'eng', 'fra', 'spa', 'ita', 'jpn', 'kor', 'rus', 'tur'];
-const TYPE_LABELS = { video: 'Video', audio: 'Audio', subtitle: 'Untertitel' };
+const TYPE_LABELS = { video: t('Video'), audio: 'Audio', subtitle: t('Untertitel') };
 
 const FEATURES = [
-  { iconName: 'layers', title: 'Spuren auswählen', text: 'Unnötige Tonspuren und Untertitel entfernen' },
-  { iconName: 'tag', title: 'Benennen', text: 'Sprache, Name, Standard und Erzwungen festlegen' },
-  { iconName: 'music', title: 'Hinzufügen und herausholen', text: 'Spuren einfügen oder als eigene Datei speichern' },
+  { iconName: 'layers', title: t('Spuren auswählen'), text: t('Unnötige Tonspuren und Untertitel entfernen') },
+  { iconName: 'tag', title: t('Benennen'), text: t('Sprache, Name, Standard und Erzwungen festlegen') },
+  { iconName: 'music', title: t('Hinzufügen und herausholen'), text: t('Spuren einfügen oder als eigene Datei speichern') },
 ];
 
 const state = { files: [], tracks: [], folder: null };
@@ -30,7 +32,7 @@ function languageSelect(track) {
   const choices = LANGUAGE_CHOICES.includes(track.language) ? LANGUAGE_CHOICES : [track.language, ...LANGUAGE_CHOICES];
   return el('select', {
     class: 'input',
-    'aria-label': 'Sprache',
+    'aria-label': t('Sprache'),
     onchange: (event) => {
       track.language = event.target.value;
     },
@@ -60,7 +62,7 @@ function trackRow(track) {
   const keep = el('input', {
     type: 'checkbox',
     checked: track.keep,
-    'aria-label': 'Spur behalten',
+    'aria-label': t('Spur behalten'),
     onchange: (event) => {
       track.keep = event.target.checked;
       renderTracks();
@@ -72,32 +74,32 @@ function trackRow(track) {
     el('span', { class: `track-type ${track.type}` }, TYPE_LABELS[track.type]),
     el('div', { class: 'track-info' },
       el('strong', {}, track.codec.toUpperCase()),
-      el('span', { class: 'muted' }, [track.info, fromMain ? '' : 'Neu'].filter(Boolean).join(' · ') || ' ')),
+      el('span', { class: 'muted' }, [track.info, fromMain ? '' : t('Neu')].filter(Boolean).join(' · ') || ' ')),
     languageSelect(track),
     el('input', {
       class: 'input track-name',
       value: track.name,
-      placeholder: 'Name der Spur',
-      'aria-label': 'Name der Spur',
+      placeholder: t('Name der Spur'),
+      'aria-label': t('Name der Spur'),
       oninput: (event) => {
         track.name = event.target.value;
       },
     }),
-    flagToggle('Standard', track.isDefault, () => toggleDefault(track)),
-    flagToggle('Erzwungen', track.forced, () => {
+    flagToggle(t('Standard'), track.isDefault, () => toggleDefault(track)),
+    flagToggle(t('Erzwungen'), track.forced, () => {
       track.forced = !track.forced;
       renderTracks();
     }),
     fromMain
-      ? el('button', { class: 'button small', onclick: () => extractTrack(track) }, 'Herausholen')
-      : el('button', { class: 'button small', onclick: () => removeSource(track.source) }, 'Entfernen'),
+      ? el('button', { class: 'button small', onclick: () => extractTrack(track) }, t('Herausholen'))
+      : el('button', { class: 'button small', onclick: () => removeSource(track.source) }, t('Entfernen')),
   );
 }
 
 function renderTracks() {
   parts.tracks.replaceChildren(...state.tracks.map(trackRow));
   const kept = state.tracks.filter((track) => track.keep).length;
-  parts.count.textContent = `${kept} von ${state.tracks.length} Spuren werden behalten`;
+  parts.count.textContent = t('{kept} von {total} Spuren werden behalten', { kept, total: state.tracks.length });
 }
 
 async function openFile(filePath) {
@@ -179,11 +181,11 @@ async function save() {
 function buildPage(root) {
   parts = {
     message: el('p', { class: 'message', role: 'alert', hidden: true }),
-    drop: createFileDrop({ onFile: openFile, title: 'Video mit Spuren hierher ziehen', features: FEATURES }),
+    drop: createFileDrop({ onFile: openFile, title: t('Video mit Spuren hierher ziehen'), features: FEATURES }),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
     count: el('p', { class: 'muted' }),
-    title: el('input', { class: 'input grow', placeholder: 'Titel des Videos', 'aria-label': 'Titel des Videos' }),
+    title: el('input', { class: 'input grow', placeholder: t('Titel des Videos'), 'aria-label': t('Titel des Videos') }),
     tracks: el('ul', { class: 'track-list' }),
     folder: el('span', { class: 'folder-path' }),
   };
@@ -191,32 +193,34 @@ function buildPage(root) {
   parts.workspace.append(
     el('section', { class: 'card file-card' },
       el('div', { class: 'video-text' }, parts.name, parts.count),
-      el('button', { class: 'button small', onclick: closeFile }, 'Andere Datei'),
+      el('div', { class: 'file-actions' },
+        createSendTo({ getPath: () => state.files[0], exclude: 'mkv' }),
+        el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),
     ),
     el('section', { class: 'card stack' },
-      el('div', { class: 'url-row' }, el('span', { class: 'muted' }, 'Titel'), parts.title),
+      el('div', { class: 'url-row' }, el('span', { class: 'muted' }, t('Titel')), parts.title),
       parts.tracks,
       createFileDrop({
         onFile: addFile,
-        title: 'Spur hinzufügen',
-        hint: 'Audio, Untertitel oder Video hierher ziehen oder klicken',
+        title: t('Spur hinzufügen'),
+        hint: t('Audio, Untertitel oder Video hierher ziehen oder klicken'),
         dialog: 'dialog:pickTrack',
         compact: true,
       }),
     ),
     el('section', { class: 'card stack' },
-      el('p', { class: 'muted' }, 'Das Ergebnis ist eine MKV-Datei. Es wird nichts neu kodiert, die Qualität bleibt gleich und es dauert meist nur Sekunden. Kapitel bleiben erhalten.'),
+      el('p', { class: 'muted' }, t('Das Ergebnis ist eine MKV-Datei. Es wird nichts neu kodiert, die Qualität bleibt gleich und es dauert meist nur Sekunden. Kapitel bleiben erhalten.')),
       el('div', { class: 'folder-row' },
-        el('span', { class: 'muted' }, 'Zielordner'),
+        el('span', { class: 'muted' }, t('Zielordner')),
         parts.folder,
-        el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern'),
+        el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern')),
       ),
-      el('div', {}, el('button', { class: 'button primary large', onclick: save }, 'Als MKV speichern')),
+      el('div', {}, el('button', { class: 'button primary large', onclick: save }, t('Als MKV speichern'))),
     ),
   );
 
   root.append(
-    pageHeader('MKV', 'Spuren verwalten, ohne das Video neu zu kodieren.'),
+    pageHeader('MKV', t('Spuren verwalten, ohne das Video neu zu kodieren.')),
     parts.message,
     parts.drop,
     parts.workspace,
@@ -227,4 +231,7 @@ export default {
   id: 'mkv',
   label: 'MKV',
   mount: buildPage,
+  onShow(data) {
+    if (data?.filePath) openFile(data.filePath);
+  },
 };

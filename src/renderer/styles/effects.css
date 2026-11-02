@@ -415,14 +415,21 @@ body {
 }
 
 .censor-field {
-  border: 1px solid rgba(255, 255, 255, 0.45);
   cursor: move;
   pointer-events: auto;
   position: absolute;
   touch-action: none;
 }
 
-.censor-field.active {
+/* Nur eine Markierung, damit man das Feld findet. Im fertigen Video ist sie nicht zu sehen. */
+.censor-frame {
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: inherit;
+  inset: 0;
+  position: absolute;
+}
+
+.censor-field.active .censor-frame {
   border: 2px solid var(--accent-2);
   box-shadow: 0 0 14px rgba(47, 198, 232, 0.45);
 }
@@ -431,7 +438,19 @@ body {
   border-radius: 50%;
 }
 
-.censor-field.black {
+.censor-effect {
+  border-radius: inherit;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+/* Mit weicher Kante formt die Maske den Rand, eine Rundung würde ihn wieder hart abschneiden. */
+.censor-effect.soft {
+  border-radius: 0;
+}
+
+.censor-effect.black {
   background: #000;
 }
 
@@ -1187,4 +1206,56 @@ body {
 
 .tool-columns .ai-controls .marker-row {
   flex-wrap: wrap;
+}
+
+/* Senden an: kleines Menü zum Weitergeben einer Datei */
+.send-menu {
+  background: #151a24;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  display: grid;
+  min-width: 170px;
+  padding: 4px;
+  position: fixed;
+  z-index: 50;
+}
+
+.send-item {
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 7px 12px;
+  text-align: left;
+}
+
+.send-item:hover,
+.send-item:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.file-card .file-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.timeline-hint {
+  font-size: 12.5px;
+  margin: 0;
+}
+
+/* Einstellungen: abgesetzt am Ende der Seitenleiste */
+.nav-item.nav-bottom {
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-small) var(--radius-small);
+  margin-top: 10px;
+  padding-top: 12px;
+}
+
+.notice .button {
+  margin-left: 10px;
 }

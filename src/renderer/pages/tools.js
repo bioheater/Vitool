@@ -4,9 +4,11 @@ import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { CensorEditor } from '../components/censor-editor.js';
 import { createFileDrop } from '../components/file-drop.js';
+import { createSendTo } from '../components/send-to.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { SectionEditor } from '../components/section-editor.js';
 import { frameButtons } from '../components/video-controls.js';
+import { t } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
@@ -14,11 +16,11 @@ const GIF_DEFAULT_SECONDS = 5;
 const GIF_LONG_SECONDS = 15;
 
 const TOOLS = [
-  { id: 'gif', label: 'GIF erstellen', action: 'GIF erstellen', needsVideo: true },
-  { id: 'audio', label: 'Audio extrahieren', action: 'Audio extrahieren', needsAudio: true },
-  { id: 'frame', label: 'Standbild', action: 'Bild speichern', needsVideo: true },
-  { id: 'subtitle', label: 'Untertitel einbrennen', action: 'Untertitel einbrennen', needsVideo: true },
-  { id: 'censor', label: 'Zensieren', action: 'Zensiert exportieren', needsVideo: true },
+  { id: 'gif', label: t('GIF erstellen'), action: t('GIF erstellen'), needsVideo: true },
+  { id: 'audio', label: t('Audio extrahieren'), action: t('Audio extrahieren'), needsAudio: true },
+  { id: 'frame', label: t('Standbild'), action: t('Bild speichern'), needsVideo: true },
+  { id: 'subtitle', label: t('Untertitel einbrennen'), action: t('Untertitel einbrennen'), needsVideo: true },
+  { id: 'censor', label: t('Zensieren'), action: t('Zensiert exportieren'), needsVideo: true },
 ];
 
 const state = {
@@ -62,6 +64,7 @@ function selectTool(id) {
   if (!showsPicture) player.video.pause();
   censor.setActive(id === 'censor');
   censor.timelineRoot.hidden = id !== 'censor';
+  censor.timelineHint.hidden = id !== 'censor' || censor.fields.length === 0;
   editor.root.hidden = id !== 'gif';
   editor.loopEnabled = id === 'gif';
   parts.frameControls.hidden = id !== 'frame';
@@ -108,7 +111,7 @@ async function openFile(filePath) {
   parts.name.title = media.path;
   parts.info.textContent = [
     formatTime(media.duration),
-    media.height ? `${media.width} × ${media.height}` : 'Nur Audio',
+    media.height ? `${media.width} × ${media.height}` : t('Nur Audio'),
   ].join(' · ');
   parts.folder.textContent = state.folder;
   parts.folder.title = state.folder;
@@ -216,9 +219,9 @@ function buildPage(root) {
     drop: createFileDrop({
       onFile: openFile,
       features: [
-        { iconName: 'target', title: 'Zensieren', text: 'Stellen mit Keyframes verdecken' },
-        { iconName: 'image', title: 'GIF und Standbild', text: 'Beste Momente als Bild oder Animation' },
-        { iconName: 'music', title: 'Audio extrahieren', text: 'Tonspur als MP3, WAV oder im Original' },
+        { iconName: 'target', title: t('Zensieren'), text: t('Stellen mit Keyframes verdecken') },
+        { iconName: 'image', title: t('GIF und Standbild'), text: t('Beste Momente als Bild oder Animation') },
+        { iconName: 'music', title: t('Audio extrahieren'), text: t('Tonspur als MP3, WAV oder im Original') },
       ],
     }),
     workspace: el('div', { class: 'stack', hidden: true }),
@@ -228,47 +231,47 @@ function buildPage(root) {
     playerCard: el('section', { class: 'card stack ai-video' }),
     columns: el('div', { class: 'ai-columns tool-columns' }),
     frameControls: el('div', { class: 'marker-row', hidden: true }),
-    gifWidth: el('select', { class: 'input', 'aria-label': 'Breite' },
-      el('option', { value: '320' }, '320 Pixel'),
-      el('option', { value: '480', selected: true }, '480 Pixel'),
-      el('option', { value: '640' }, '640 Pixel'),
-      el('option', { value: '' }, 'Original')),
-    gifFps: el('select', { class: 'input', 'aria-label': 'Bilder pro Sekunde' },
+    gifWidth: el('select', { class: 'input', 'aria-label': t('Breite') },
+      el('option', { value: '320' }, t('320 Pixel')),
+      el('option', { value: '480', selected: true }, t('480 Pixel')),
+      el('option', { value: '640' }, t('640 Pixel')),
+      el('option', { value: '' }, t('Original'))),
+    gifFps: el('select', { class: 'input', 'aria-label': t('Bilder pro Sekunde') },
       el('option', { value: '10' }, '10'),
       el('option', { value: '15', selected: true }, '15'),
       el('option', { value: '24' }, '24')),
-    gifHint: el('p', { class: 'muted', hidden: true }, 'Längere GIFs werden schnell sehr groß. Eine geringere Breite oder weniger Bilder pro Sekunde helfen.'),
+    gifHint: el('p', { class: 'muted', hidden: true }, t('Längere GIFs werden schnell sehr groß. Eine geringere Breite oder weniger Bilder pro Sekunde helfen.')),
     subtitleDrop: createFileDrop({
       onFile: (filePath) => {
         state.subtitlePath = filePath;
         setMessage('');
         renderSubtitle();
       },
-      title: 'Untertitel-Datei hierher ziehen',
-      hint: 'oder klicken (SRT, ASS, VTT)',
+      title: t('Untertitel-Datei hierher ziehen'),
+      hint: t('oder klicken (SRT, ASS, VTT)'),
       dialog: 'dialog:pickSubtitle',
       compact: true,
     }),
     subtitleChosen: el('div', { class: 'folder-row', hidden: true }),
     subtitleName: el('span', { class: 'folder-path' }),
-    subtitleSize: el('select', { class: 'input', 'aria-label': 'Schriftgröße' },
-      el('option', { value: 'klein' }, 'Klein'),
-      el('option', { value: 'mittel', selected: true }, 'Mittel'),
-      el('option', { value: 'gross' }, 'Groß')),
+    subtitleSize: el('select', { class: 'input', 'aria-label': t('Schriftgröße') },
+      el('option', { value: 'klein' }, t('Klein')),
+      el('option', { value: 'mittel', selected: true }, t('Mittel')),
+      el('option', { value: 'gross' }, t('Groß'))),
     folder: el('span', { class: 'folder-path' }),
     start: el('button', { class: 'button primary large', onclick: runTool }),
   };
 
   parts.frameControls.append(
     ...frameButtons(player.video),
-    choiceGroup('Bildformat', [{ value: 'png', text: 'PNG' }, { value: 'jpg', text: 'JPG' }], state.frameFormat, (value) => {
+    choiceGroup(t('Bildformat'), [{ value: 'png', text: 'PNG' }, { value: 'jpg', text: 'JPG' }], state.frameFormat, (value) => {
       state.frameFormat = value;
     }),
   );
-  parts.playerCard.append(player.root, editor.root, censor.timelineRoot, parts.frameControls);
+  parts.playerCard.append(player.root, editor.root, censor.timelineHint, censor.timelineRoot, parts.frameControls);
 
   parts.subtitleChosen.append(
-    el('span', { class: 'muted' }, 'Untertitel'),
+    el('span', { class: 'muted' }, t('Untertitel')),
     parts.subtitleName,
     el('button', {
       class: 'button small',
@@ -276,7 +279,7 @@ function buildPage(root) {
         state.subtitlePath = null;
         renderSubtitle();
       },
-    }, 'Andere Datei'),
+    }, t('Andere Datei')),
   );
 
   const audioChoices = [
@@ -284,35 +287,37 @@ function buildPage(root) {
     { value: 'm4a', text: 'M4A' },
     { value: 'wav', text: 'WAV' },
     { value: 'flac', text: 'FLAC' },
-    { value: 'original', text: 'Original' },
+    { value: 'original', text: t('Original') },
   ];
 
   parts.panels = new Map([
     ['gif', el('section', { class: 'card stack' },
-      el('div', { class: 'option-row' }, selectField('Breite', parts.gifWidth), selectField('Bilder pro Sekunde', parts.gifFps)),
+      el('div', { class: 'option-row' }, selectField(t('Breite'), parts.gifWidth), selectField(t('Bilder pro Sekunde'), parts.gifFps)),
       parts.gifHint)],
     ['audio', el('section', { class: 'card stack' },
-      el('h2', {}, 'Format'),
-      choiceGroup('Audioformat', audioChoices, state.audioFormat, (value) => {
+      el('h2', {}, t('Format')),
+      choiceGroup(t('Audioformat'), audioChoices, state.audioFormat, (value) => {
         state.audioFormat = value;
       }),
-      el('p', { class: 'muted' }, 'Original übernimmt die Tonspur unverändert und ohne Qualitätsverlust.'))],
+      el('p', { class: 'muted' }, t('Original übernimmt die Tonspur unverändert und ohne Qualitätsverlust.')))],
     ['censor', censor.root],
     ['frame', el('section', { class: 'card' },
-      el('p', { class: 'muted' }, 'Gespeichert wird das Bild an der aktuellen Stelle des Players. Mit den Knöpfen gehst du bildgenau vor und zurück.'))],
+      el('p', { class: 'muted' }, t('Gespeichert wird das Bild an der aktuellen Stelle des Players. Mit den Knöpfen gehst du bildgenau vor und zurück.')))],
     ['subtitle', el('section', { class: 'card stack' },
       parts.subtitleDrop,
       parts.subtitleChosen,
-      selectField('Schriftgröße', parts.subtitleSize),
-      el('p', { class: 'muted' }, 'Die Untertitel werden fest ins Bild geschrieben. Das Video wird dafür neu kodiert und als MP4 gespeichert. Bei ASS-Dateien gilt deren eigener Stil.'))],
+      selectField(t('Schriftgröße'), parts.subtitleSize),
+      el('p', { class: 'muted' }, t('Die Untertitel werden fest ins Bild geschrieben. Das Video wird dafür neu kodiert und als MP4 gespeichert. Bei ASS-Dateien gilt deren eigener Stil.')))],
   ]);
 
   parts.workspace.append(
     el('section', { class: 'card file-card' },
       el('div', { class: 'video-text' }, parts.name, parts.info),
-      el('button', { class: 'button small', onclick: closeFile }, 'Andere Datei'),
+      el('div', { class: 'file-actions' },
+        createSendTo({ getPath: () => state.media?.path, exclude: 'tools' }),
+        el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),
     ),
-    el('div', { class: 'tool-tabs segments', role: 'group', 'aria-label': 'Werkzeug' }, ...parts.tabs.values()),
+    el('div', { class: 'tool-tabs segments', role: 'group', 'aria-label': t('Werkzeug') }, ...parts.tabs.values()),
     // Wie bei KI-Maske: Video links und beim Scrollen stehend, Einstellungen rechts daneben.
     parts.columns,
   );
@@ -322,9 +327,9 @@ function buildPage(root) {
       ...parts.panels.values(),
       el('section', { class: 'card stack' },
         el('div', { class: 'folder-row' },
-          el('span', { class: 'muted' }, 'Zielordner'),
+          el('span', { class: 'muted' }, t('Zielordner')),
           parts.folder,
-          el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern'),
+          el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern')),
         ),
         el('div', {}, parts.start),
       ),
@@ -332,13 +337,16 @@ function buildPage(root) {
   );
 
   root.classList.add('wide-page');
-  root.append(pageHeader('Werkzeuge', 'Kleine Helfer für alles rund um deine Videos.'), parts.message, parts.drop, parts.workspace);
+  root.append(pageHeader(t('Werkzeuge'), t('Kleine Helfer für alles rund um deine Videos.')), parts.message, parts.drop, parts.workspace);
 }
 
 export default {
   id: 'tools',
-  label: 'Werkzeuge',
+  label: t('Werkzeuge'),
   mount: buildPage,
+  onShow(data) {
+    if (data?.filePath) openFile(data.filePath);
+  },
   onHide() {
     player.video.pause();
   },
