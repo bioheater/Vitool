@@ -47,7 +47,7 @@ function updateRow(row, job) {
 }
 
 export function mountQueuePanel(root) {
-  let open = true;
+  let showAll = false;
   let jobs = [];
   const rows = new Map();
 
@@ -59,7 +59,7 @@ export function mountQueuePanel(root) {
   const toggle = el('button', {
     class: 'button small',
     onclick: () => {
-      open = !open;
+      showAll = !showAll;
       render();
     },
   });
@@ -70,12 +70,19 @@ export function mountQueuePanel(root) {
     list,
   );
 
+  // Eingeklappt erscheinen nur laufende Aufgaben, sonst die zuletzt fertige.
+  function isVisible(job) {
+    if (showAll) return true;
+    return jobs.some(isActive) ? isActive(job) : job === jobs.at(-1);
+  }
+
   function render() {
     const active = jobs.filter(isActive).length;
     count.textContent = active ? `${active} aktiv` : 'Keine aktiven Aufgaben';
-    clear.hidden = jobs.length === active;
-    toggle.textContent = open ? 'Einklappen' : 'Ausklappen';
-    list.hidden = !open || jobs.length === 0;
+    clear.hidden = !showAll || jobs.length === active;
+    toggle.hidden = jobs.length < 2;
+    toggle.textContent = showAll ? 'Weniger anzeigen' : `Alle anzeigen (${jobs.length})`;
+    list.hidden = jobs.length === 0;
 
     const ids = new Set(jobs.map((job) => job.id));
     rows.forEach((row, id) => {
@@ -88,6 +95,7 @@ export function mountQueuePanel(root) {
       if (!rows.has(job.id)) rows.set(job.id, createRow(job));
       const row = rows.get(job.id);
       updateRow(row, job);
+      row.node.hidden = !isVisible(job);
       if (list.children[index] !== row.node) list.insertBefore(row.node, list.children[index] ?? null);
     });
   }

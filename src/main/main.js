@@ -5,6 +5,12 @@ const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 const { Store } = require('./core/store');
 const { JobQueue } = require('./core/job-queue');
 const { ToolChecker } = require('./core/tools-check');
+const { listMediaFiles } = require('./core/files');
+
+const VIDEO_FILTERS = [
+  { name: 'Videos und Audio', extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'mp3', 'm4a', 'wav'] },
+  { name: 'Alle Dateien', extensions: ['*'] },
+];
 
 // Neue Bereiche: Modul anlegen und hier eintragen.
 const features = [
@@ -28,6 +34,7 @@ function createWindow() {
     minHeight: 640,
     backgroundColor: '#101216',
     title: 'Vitool',
+    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -46,6 +53,9 @@ function createWindow() {
 function send(channel, data) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, data);
 }
+
+// Damit Windows Vitool in der Taskleiste als eigenes Programm mit eigenem Symbol führt.
+app.setAppUserModelId('Vitool');
 
 app.whenReady().then(() => {
   const store = new Store(path.join(app.getPath('userData'), 'vitool-daten.json'), {
@@ -79,12 +89,21 @@ app.whenReady().then(() => {
     const result = await dialog.showOpenDialog(win, {
       title: 'Video auswählen',
       properties: ['openFile'],
-      filters: [
-        { name: 'Videos und Audio', extensions: ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'mp3', 'm4a', 'wav'] },
-        { name: 'Alle Dateien', extensions: ['*'] },
-      ],
+      filters: VIDEO_FILTERS,
     });
     return result.canceled ? null : result.filePaths[0];
+  });
+  ipcMain.handle('dialog:pickVideos', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: 'Videos auswählen',
+      properties: ['openFile', 'multiSelections'],
+      filters: VIDEO_FILTERS,
+    });
+    return result.canceled ? [] : result.filePaths;
+  });
+  ipcMain.handle('dialog:pickVideoFolder', async () => {
+    const result = await dialog.showOpenDialog(win, { title: 'Ordner mit Videos wählen', properties: ['openDirectory'] });
+    return result.canceled ? [] : listMediaFiles(result.filePaths[0]);
   });
   ipcMain.handle('dialog:pickTrack', async () => {
     const result = await dialog.showOpenDialog(win, {

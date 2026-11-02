@@ -28,4 +28,15 @@ async function moveFile(source, folder, fileName = path.basename(source)) {
   return target;
 }
 
-module.exports = { uniquePath, moveFile };
+const MEDIA_EXTENSIONS = ['.mp4', '.mkv', '.webm', '.mov', '.avi', '.m4v', '.ts', '.wmv', '.flv', '.mp3', '.m4a', '.wav', '.flac', '.ogg', '.opus'];
+
+// Alle Video- und Audiodateien direkt in einem Ordner, ohne Unterordner, alphabetisch sortiert.
+async function listMediaFiles(folder) {
+  const entries = await fs.readdir(folder, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isFile() && MEDIA_EXTENSIONS.includes(path.extname(entry.name).toLowerCase()))
+    .map((entry) => path.join(folder, entry.name))
+    .sort((a, b) => a.localeCompare(b, 'de', { numeric: true }));
+}
+
+module.exports = { uniquePath, moveFile, listMediaFiles };

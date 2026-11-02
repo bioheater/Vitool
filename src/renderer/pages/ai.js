@@ -96,6 +96,22 @@ function confirmUninstall() {
   if (window.confirm('Das KI-Paket mit allen Modellen wirklich vollständig entfernen?')) act('ai:uninstall');
 }
 
+// Bis Python und Grafikkarte geprüft sind, ist der Knopf gesperrt und sagt das auch.
+function installRequirements(status) {
+  if (!status.checked) {
+    return [
+      el('p', { class: 'muted' }, 'Grafikkarte und Python werden geprüft …'),
+      el('div', {}, el('button', { class: 'button primary', disabled: true }, 'KI-Paket installieren')),
+    ];
+  }
+  return [
+    el('p', { class: 'muted' }, status.gpu ? `Grafikkarte erkannt: ${status.gpu}` : 'Keine NVIDIA-Grafikkarte erkannt. Die KI läuft dann über den Prozessor und ist sehr langsam.'),
+    status.python
+      ? el('div', {}, el('button', { class: 'button primary', onclick: () => act('ai:install') }, 'KI-Paket installieren'))
+      : el('p', { class: 'message' }, 'Dafür wird Python 3.10 oder neuer gebraucht. Installiere es mit: winget install Python.Python.3.12'),
+  ];
+}
+
 function renderSetup() {
   const { status } = state;
   const hasModel = status.models.some((model) => model.downloaded);
@@ -108,14 +124,11 @@ function renderSetup() {
       el('p', { class: 'muted' }, 'KI-Maske nutzt SAM 2.1 von Meta: Du klickst ein Objekt an, die KI erkennt seine Form und verfolgt es durchs Video. Alles läuft nur auf deinem Rechner, es wird kein Video hochgeladen. Vitool funktioniert auch ohne dieses Paket vollständig.'),
       status.installed
         ? el('div', { class: 'marker-row' },
-          el('span', { class: 'muted' }, `Installiert · belegt ${status.usedGb} GB`),
+          el('span', { class: 'muted' }, status.usedGb === null ? 'Installiert · Speicherbedarf wird ermittelt …' : `Installiert · belegt ${status.usedGb} GB`),
           el('button', { class: 'button small', onclick: confirmUninstall }, 'KI-Paket vollständig entfernen'))
         : el('div', { class: 'stack' },
           el('p', {}, `Download etwa ${status.installSizeGb} GB · frei auf dem Laufwerk: ${status.freeGb} GB`),
-          el('p', { class: 'muted' }, status.gpu ? `Grafikkarte erkannt: ${status.gpu}` : 'Keine NVIDIA-Grafikkarte erkannt. Die KI läuft dann über den Prozessor und ist sehr langsam.'),
-          status.python
-            ? el('div', {}, el('button', { class: 'button primary', onclick: () => act('ai:install') }, 'KI-Paket installieren'))
-            : el('p', { class: 'message' }, 'Dafür wird Python 3.10 oder neuer gebraucht. Installiere es mit: winget install Python.Python.3.12'),
+          ...installRequirements(status),
         ),
     ),
     status.installed ? el('section', { class: 'card stack' },
@@ -172,6 +185,7 @@ async function openFile(filePath) {
   parts.folder.textContent = state.folder;
   parts.stage.style.width = `${(STAGE_HEIGHT * media.width) / media.height}px`;
   parts.stage.style.aspectRatio = `${media.width} / ${media.height}`;
+  parts.stage.style.setProperty('--stage-aspect', String(media.width / media.height));
 
   editor.load(media.duration);
   editor.ensureRange();
@@ -611,12 +625,14 @@ function buildPage(root) {
       el('div', { class: 'video-text' }, parts.name, parts.info),
       el('button', { class: 'button small', onclick: closeFile }, 'Andere Datei'),
     ),
-    el('section', { class: 'card stack' }, player.root, editor.root),
-    parts.prepareCard,
-    parts.clickCard,
-    parts.exportCard,
+    // Das Video bleibt beim Scrollen stehen, damit die Regler sichtbar wirken.
+    el('div', { class: 'ai-columns' },
+      el('section', { class: 'card stack ai-video' }, player.root, editor.root),
+      el('div', { class: 'stack ai-controls' }, parts.prepareCard, parts.clickCard, parts.exportCard),
+    ),
   );
 
+  root.classList.add('wide-page');
   root.append(
     pageHeader('KI-Maske', 'Objekte anklicken, automatisch verfolgen und bearbeiten.'),
     parts.message,
@@ -626,6 +642,7 @@ function buildPage(root) {
   );
   parts.drop.hidden = true;
 
+  window.vitool.on('ai:statusChanged', refresh);
   window.vitool.on('queue:update', (jobs) => {
     const running = jobs.some((job) => job.kind === 'ai' && (job.status === 'running' || job.status === 'queued'));
     if (!running && state.wasRunning) refresh();

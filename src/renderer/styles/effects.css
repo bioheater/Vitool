@@ -92,7 +92,7 @@ body {
 }
 
 .brand-mark {
-  filter: drop-shadow(0 4px 12px rgba(47, 198, 232, 0.45));
+  filter: drop-shadow(0 4px 12px rgba(139, 108, 255, 0.4));
   height: 30px;
   width: 30px;
 }
@@ -532,8 +532,81 @@ body {
   opacity: 0.5;
 }
 
+.batch-list {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.batch-row {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  padding: 7px 0;
+}
+
+.batch-row:first-child {
+  border-top: 0;
+}
+
+.batch-row.skip .job-title {
+  color: var(--muted);
+}
+
+.batch-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+
 .svg-filters {
   position: absolute;
+}
+
+.page > div.wide-page {
+  max-width: 1240px;
+}
+
+.ai-columns {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr);
+}
+
+.ai-video {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.ai-video,
+.ai-controls {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.ai-controls > .card {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.ai-controls .option-row {
+  gap: 8px;
+}
+
+.ai-controls .segments {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1080px) {
+  .ai-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Über die Breite begrenzen, damit Video und Vorschau dasselbe Seitenverhältnis behalten. */
+  .ai-video .crop-stage {
+    max-width: min(100%, calc(240px * var(--stage-aspect, 1.78)));
+  }
 }
 
 .slider-label {

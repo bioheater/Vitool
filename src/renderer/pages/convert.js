@@ -1,4 +1,5 @@
 // Bereich Konvertieren: Zielformat, Zielgröße, Auflösung und Hochformat wählen.
+// Mehrere Dateien werden mit denselben Einstellungen nacheinander verarbeitet.
 import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
@@ -14,7 +15,8 @@ const RESOLUTIONS = [2160, 1440, 1080, 720, 480, 360];
 const SIZE_PRESETS = [10, 25, 50, 100];
 const PREVIEW_HEIGHT = 340;
 
-const state = { media: null, format: 'mp4', folder: null, cropPosition: 0.5 };
+// folder ist null, solange jede Datei neben ihrem Original landen soll.
+const state = { items: [], format: 'mp4', folder: null, cropPosition: 0.5, notice: '' };
 let parts = {};
 let player = null;
 let planRequest = 0;
@@ -24,32 +26,60 @@ function setMessage(text) {
   parts.message.hidden = !text;
 }
 
-function currentOptions() {
+function preview() {
+  return state.items.find((item) => item.media.hasVideo)?.media ?? state.items[0]?.media ?? null;
+}
+
+function options(item) {
   const isVideo = VIDEO_FORMATS.includes(state.format);
   const sizable = !UNSIZABLE_FORMATS.includes(state.format);
   return {
-    filePath: state.media.path,
+    filePath: item.media.path,
     format: state.format,
     height: isVideo ? Number(parts.resolution.value) || null : null,
     portrait: isVideo && parts.portrait.checked,
     cropPosition: state.cropPosition,
     targetSizeMb: sizable && parts.sizeToggle.checked ? Number(parts.sizeInput.value) || 0 : null,
-    folder: state.folder,
+    folder: state.folder ?? folderOf(item.media.path),
   };
 }
 
-// Fragt den Hintergrund, was passieren wird, damit Probleme schon vor dem Start sichtbar sind.
+function mediaInfo(media) {
+  return [
+    formatTime(media.duration),
+    media.height ? `${media.width} × ${media.height}` : 'Nur Audio',
+    `${(media.size / 1024 / 1024).toFixed(1)} MB`,
+  ].join(' · ');
+}
+
+// Fragt für jede Datei, was passieren wird, damit Probleme schon vor dem Start sichtbar sind.
 async function updatePlan() {
-  if (!state.media) return;
+  if (state.items.length === 0) return;
   planRequest += 1;
   const request = planRequest;
-  const response = await invoke('convert:plan', currentOptions());
+  const responses = await Promise.all(state.items.map((item) => invoke('convert:plan', options(item))));
   if (request !== planRequest) return;
 
-  parts.summary.textContent = response.ok ? response.summary : '';
-  parts.summary.hidden = !response.ok;
-  parts.start.disabled = !response.ok;
-  setMessage(response.ok ? '' : response.error);
+  state.items.forEach((item, index) => { item.plan = responses[index]; });
+  const ready = state.items.filter((item) => item.plan.ok);
+  const skipped = state.items.length - ready.length;
+
+  if (state.items.length === 1) {
+    const [{ plan }] = state.items;
+    parts.summary.textContent = plan.ok ? plan.summary : '';
+    setMessage(plan.ok ? state.notice : plan.error);
+  } else {
+    parts.summary.textContent = [
+      `${ready.length} von ${state.items.length} Dateien werden konvertiert.`,
+      ready[0]?.plan.summary,
+      skipped ? `${skipped} ${skipped === 1 ? 'wird' : 'werden'} übersprungen, der Grund steht in der Liste.` : '',
+    ].filter(Boolean).join(' ');
+    setMessage(state.notice);
+  }
+  parts.summary.hidden = !parts.summary.textContent;
+  parts.start.disabled = ready.length === 0;
+  parts.start.textContent = ready.length > 1 ? `${ready.length} Dateien konvertieren` : 'Konvertieren';
+  renderFileList();
 }
 
 function renderFormats() {
@@ -60,7 +90,7 @@ function renderFormats() {
   });
 
   const isVideo = VIDEO_FORMATS.includes(state.format);
-  parts.videoCard.hidden = !isVideo || !state.media?.hasVideo;
+  parts.videoCard.hidden = !isVideo || !preview()?.hasVideo;
   parts.sizeCard.hidden = UNSIZABLE_FORMATS.includes(state.format);
   if (!isVideo) player.video.pause();
   updatePlan();
@@ -79,7 +109,7 @@ function formatButton(format) {
 }
 
 function renderCrop() {
-  const { media } = state;
+  const media = preview();
   if (!media?.height) return;
 
   const showPicture = parts.portrait.checked;
@@ -89,7 +119,7 @@ function renderCrop() {
     return;
   }
 
-  if (!player.video.getAttribute('src')) player.load(media);
+  if (player.media?.path !== media.path) player.load(media);
   parts.stage.style.width = `${(PREVIEW_HEIGHT * media.width) / media.height}px`;
   parts.stage.style.aspectRatio = `${media.width} / ${media.height}`;
 
@@ -97,70 +127,134 @@ function renderCrop() {
   const canMove = frameWidth < 1;
   parts.cropSlider.closest('label').hidden = !canMove;
   parts.cropInfo.hidden = canMove;
+  parts.cropBatchHint.hidden = state.items.length < 2;
   parts.maskLeft.style.width = `${(1 - frameWidth) * state.cropPosition * 100}%`;
   parts.maskRight.style.width = `${(1 - frameWidth) * (1 - state.cropPosition) * 100}%`;
 }
 
-async function openFile(filePath) {
-  setMessage('');
-  const response = await invoke('media:probe', filePath);
-  if (!response.ok) {
-    setMessage(response.error);
-    return;
-  }
+function renderHeader() {
+  const single = state.items.length === 1;
+  const [first] = state.items;
+  parts.name.textContent = single ? first.media.name : `${state.items.length} Dateien`;
+  parts.name.title = single ? first.media.path : '';
+  parts.info.textContent = single
+    ? mediaInfo(first.media)
+    : `zusammen ${(state.items.reduce((sum, item) => sum + item.media.size, 0) / 1024 / 1024).toFixed(1)} MB`;
+  parts.fileList.hidden = single;
+  parts.folder.textContent = state.folder ?? (single ? folderOf(first.media.path) : 'Jeweils neben der Originaldatei');
+  parts.folder.title = parts.folder.textContent;
+  parts.resetFolder.hidden = state.folder === null;
+}
 
-  const { media } = response;
-  state.media = media;
-  state.folder = folderOf(media.path);
-  state.cropPosition = 0.5;
-  state.format = media.hasVideo ? 'mp4' : 'mp3';
+function renderFileList() {
+  parts.fileList.replaceChildren(...state.items.map((item) => el('li', { class: `batch-row ${item.plan && !item.plan.ok ? 'skip' : ''}` },
+    el('div', { class: 'history-text' },
+      el('span', { class: 'job-title', title: item.media.path }, item.media.name),
+      el('span', { class: item.plan && !item.plan.ok ? 'batch-error' : 'muted' }, item.plan && !item.plan.ok ? `Wird übersprungen: ${item.plan.error}` : mediaInfo(item.media))),
+    el('button', { class: 'button small', 'aria-label': `${item.media.name} entfernen`, onclick: () => removeItem(item) }, 'Entfernen'),
+  )));
+}
 
-  parts.name.textContent = media.name;
-  parts.name.title = media.path;
-  parts.info.textContent = [
-    formatTime(media.duration),
-    media.height ? `${media.width} × ${media.height}` : 'Nur Audio',
-    `${(media.size / 1024 / 1024).toFixed(1)} MB`,
-  ].join(' · ');
-  parts.folder.textContent = state.folder;
-  parts.folder.title = state.folder;
-
+function resetOptions() {
+  const maxHeight = Math.max(0, ...state.items.map((item) => item.media.height ?? 0));
   parts.resolution.replaceChildren(
     el('option', { value: '' }, 'Original'),
-    ...RESOLUTIONS.filter((height) => height < media.height).map((height) => el('option', { value: String(height) }, `${height}p`)),
+    ...RESOLUTIONS.filter((height) => height < maxHeight).map((height) => el('option', { value: String(height) }, `${height}p`)),
   );
-  parts.portrait.checked = false;
-  parts.cropSlider.value = '50';
-  parts.sizeToggle.checked = false;
-  parts.sizeFields.hidden = true;
-  parts.videoFormats.hidden = !media.hasVideo;
+  parts.videoFormats.hidden = !state.items.some((item) => item.media.hasVideo);
+}
 
-  player.clear();
+async function openFiles(paths) {
+  setMessage('');
+  const known = new Set(state.items.map((item) => item.media.path.toLowerCase()));
+  const fresh = paths.filter((filePath) => !known.has(filePath.toLowerCase()));
+  const responses = await Promise.all(fresh.map((filePath) => invoke('media:probe', filePath)));
+
+  const failed = responses.filter((response) => !response.ok);
+  const firstTime = state.items.length === 0;
+  responses.filter((response) => response.ok).forEach((response) => state.items.push({ media: response.media, plan: null }));
+
+  // Der Hinweis bleibt stehen, bis neue Dateien kommen, auch wenn sich die Einstellungen ändern.
+  state.notice = '';
+  if (failed.length) {
+    state.notice = fresh.length === 1
+      ? failed[0].error
+      : `${failed.length} ${failed.length === 1 ? 'Datei ließ' : 'Dateien ließen'} sich nicht lesen und ${failed.length === 1 ? 'wurde' : 'wurden'} nicht übernommen.`;
+    setMessage(state.notice);
+  }
+  if (state.items.length === 0) return;
+
+  if (firstTime) {
+    state.cropPosition = 0.5;
+    state.format = state.items.some((item) => item.media.hasVideo) ? 'mp4' : 'mp3';
+    parts.portrait.checked = false;
+    parts.cropSlider.value = '50';
+    parts.sizeToggle.checked = false;
+    parts.sizeFields.hidden = true;
+    player.clear();
+  }
+
+  resetOptions();
+  renderHeader();
   parts.drop.hidden = true;
   parts.workspace.hidden = false;
   renderCrop();
   renderFormats();
 }
 
-function closeFile() {
+function removeItem(item) {
+  state.items.splice(state.items.indexOf(item), 1);
+  if (state.items.length === 0) {
+    closeFiles();
+    return;
+  }
+  resetOptions();
+  renderHeader();
+  renderCrop();
+  renderFormats();
+}
+
+function closeFiles() {
   player.clear();
-  state.media = null;
+  state.items = [];
+  state.folder = null;
+  state.notice = '';
   setMessage('');
   parts.workspace.hidden = true;
   parts.drop.hidden = false;
 }
 
+async function pickFolderFiles() {
+  const paths = await invoke('dialog:pickVideoFolder');
+  if (paths.length === 0) return;
+  openFiles(paths);
+}
+
 async function chooseFolder() {
-  const folder = await invoke('dialog:pickFolder', state.folder);
+  const folder = await invoke('dialog:pickFolder', state.folder ?? folderOf(state.items[0].media.path));
   if (!folder) return;
   state.folder = folder;
-  parts.folder.textContent = folder;
-  parts.folder.title = folder;
+  renderHeader();
+  updatePlan();
+}
+
+function resetFolder() {
+  state.folder = null;
+  renderHeader();
+  updatePlan();
 }
 
 async function startConvert() {
-  const response = await invoke('convert:start', currentOptions());
-  setMessage(response.ok ? '' : response.error);
+  const ready = state.items.filter((item) => item.plan?.ok);
+  const responses = await Promise.all(ready.map((item) => invoke('convert:start', options(item))));
+  const failed = responses.filter((response) => !response.ok);
+  if (failed.length === 0) {
+    setMessage('');
+  } else if (ready.length === 1) {
+    setMessage(failed[0].error);
+  } else {
+    setMessage(`${failed.length} von ${ready.length} Dateien konnten nicht gestartet werden: ${failed[0].error}`);
+  }
 }
 
 function buildPage(root) {
@@ -169,17 +263,21 @@ function buildPage(root) {
 
   parts = {
     message: el('p', { class: 'message', role: 'alert', hidden: true }),
-    drop: createFileDrop({
-      onFile: openFile,
-      features: [
-        { iconName: 'convert', title: 'Jedes Format', text: 'MP4, MKV, WebM, MP3, WAV und mehr' },
-        { iconName: 'shrink', title: 'Zielgröße', text: 'Zum Beispiel unter 25 MB zum Verschicken' },
-        { iconName: 'phone', title: 'Hochformat', text: 'Auf 9:16 zuschneiden für Reels und Shorts' },
-      ],
-    }),
+    drop: el('div', { class: 'stack' },
+      createFileDrop({
+        onFiles: openFiles,
+        hint: 'oder klicken, um eine oder mehrere Dateien auszuwählen',
+        features: [
+          { iconName: 'convert', title: 'Jedes Format', text: 'MP4, MKV, WebM, MP3, WAV und mehr' },
+          { iconName: 'shrink', title: 'Zielgröße', text: 'Zum Beispiel unter 25 MB zum Verschicken' },
+          { iconName: 'layers', title: 'Viele auf einmal', text: 'Mehrere Dateien oder einen ganzen Ordner' },
+        ],
+      }),
+      el('div', {}, el('button', { class: 'button', onclick: pickFolderFiles }, 'Ganzen Ordner auswählen'))),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
     info: el('p', { class: 'muted' }),
+    fileList: el('ul', { class: 'history-list batch-list', hidden: true }),
     videoFormats: el('div', { class: 'segments', role: 'group', 'aria-label': 'Videoformate' }, ...VIDEO_FORMATS.map(formatButton)),
     audioFormats: el('div', { class: 'segments', role: 'group', 'aria-label': 'Audioformate' }, ...AUDIO_FORMATS.map(formatButton)),
     videoCard: el('section', { class: 'card stack' }),
@@ -207,6 +305,7 @@ function buildPage(root) {
       },
     }),
     cropInfo: el('p', { class: 'muted' }, 'Dieses Video ist schon schmal genug, es wird nur oben und unten beschnitten.'),
+    cropBatchHint: el('p', { class: 'muted', hidden: true }, 'Die Vorschau zeigt die erste Datei. Der Ausschnitt gilt für alle Dateien an derselben Stelle.'),
     sizeCard: el('section', { class: 'card stack' }),
     sizeToggle: el('input', {
       type: 'checkbox',
@@ -226,6 +325,7 @@ function buildPage(root) {
     }),
     summary: el('p', { class: 'muted' }),
     folder: el('span', { class: 'folder-path' }),
+    resetFolder: el('button', { class: 'button small', hidden: true, onclick: resetFolder }, 'Wie Original'),
     start: el('button', { class: 'button primary large', onclick: startConvert }, 'Konvertieren'),
   };
 
@@ -234,6 +334,7 @@ function buildPage(root) {
     parts.stage,
     el('label', { class: 'crop-control' }, el('span', { class: 'muted' }, 'Bildausschnitt'), parts.cropSlider),
     parts.cropInfo,
+    parts.cropBatchHint,
   );
 
   parts.videoCard.append(
@@ -262,9 +363,13 @@ function buildPage(root) {
   );
 
   parts.workspace.append(
-    el('section', { class: 'card file-card' },
-      el('div', { class: 'video-text' }, parts.name, parts.info),
-      el('button', { class: 'button small', onclick: closeFile }, 'Andere Datei'),
+    el('section', { class: 'card stack' },
+      el('div', { class: 'file-card' },
+        el('div', { class: 'video-text' }, parts.name, parts.info),
+        el('div', { class: 'marker-row' },
+          el('button', { class: 'button small', onclick: () => parts.addFiles.click() }, 'Dateien hinzufügen'),
+          el('button', { class: 'button small', onclick: closeFiles }, 'Alle entfernen'))),
+      parts.fileList,
     ),
     el('section', { class: 'card stack' },
       el('h2', {}, 'Zielformat'),
@@ -277,13 +382,19 @@ function buildPage(root) {
       el('div', { class: 'folder-row' },
         el('span', { class: 'muted' }, 'Zielordner'),
         parts.folder,
+        parts.resetFolder,
         el('button', { class: 'button small', onclick: chooseFolder }, 'Ändern'),
       ),
       el('div', {}, parts.start),
     ),
   );
 
-  root.append(pageHeader('Konvertieren', 'Format, Größe und Bild passend machen.'), parts.message, parts.drop, parts.workspace);
+  // Unsichtbare Ablage für "Dateien hinzufügen", damit Auswahlfenster und Hineinziehen gleich arbeiten.
+  parts.addFiles = createFileDrop({ onFiles: openFiles, compact: true });
+  parts.addFiles.hidden = true;
+  parts.workspace.append(parts.addFiles);
+
+  root.append(pageHeader('Konvertieren', 'Format, Größe und Bild passend machen, auch für viele Dateien auf einmal.'), parts.message, parts.drop, parts.workspace);
 }
 
 export default {
@@ -291,7 +402,7 @@ export default {
   label: 'Konvertieren',
   mount: buildPage,
   onShow(data) {
-    if (data?.filePath) openFile(data.filePath);
+    if (data?.filePath) openFiles([data.filePath]);
   },
   onHide() {
     player.video.pause();

@@ -1,5 +1,6 @@
 // Ablagefläche für Dateien: hineinziehen oder anklicken.
 // Mit features entsteht die große Startfläche eines Bereichs samt Funktionskarten.
+// Mit onFiles nimmt sie mehrere Dateien auf einmal an.
 import { el, icon } from '../utils/dom.js';
 import { ICONS } from '../utils/icons.js';
 
@@ -12,15 +13,22 @@ function featureCard({ iconName, title, text }) {
 
 export function createFileDrop({
   onFile,
-  title = 'Video hierher ziehen',
+  onFiles,
+  title = onFiles ? 'Videos hierher ziehen' : 'Video hierher ziehen',
   hint = 'oder klicken, um eine Datei auszuwählen',
-  dialog = 'dialog:pickVideo',
+  dialog = onFiles ? 'dialog:pickVideos' : 'dialog:pickVideo',
   compact = false,
   features = null,
 }) {
+  const deliver = (paths) => {
+    if (paths.length === 0) return;
+    if (onFiles) onFiles(paths);
+    else onFile(paths[0]);
+  };
+
   const pick = async () => {
-    const filePath = await window.vitool.invoke(dialog);
-    if (filePath) onFile(filePath);
+    const result = await window.vitool.invoke(dialog);
+    deliver([result].flat().filter(Boolean));
   };
 
   const drop = el('button', {
@@ -34,8 +42,7 @@ export function createFileDrop({
     ondrop: (event) => {
       event.preventDefault();
       drop.classList.remove('over');
-      const [file] = event.dataTransfer.files;
-      if (file) onFile(window.vitool.pathForFile(file));
+      deliver([...event.dataTransfer.files].map((file) => window.vitool.pathForFile(file)));
     },
   },
   compact ? null : el('span', { class: 'drop-icon' }, icon(ICONS.upload)),

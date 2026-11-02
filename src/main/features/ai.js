@@ -108,7 +108,7 @@ class WorkerClient {
   }
 }
 
-function register({ ipcMain, queue, store, tools }) {
+function register({ ipcMain, queue, store, tools, send }) {
   const root = path.join(app.getPath('userData'), 'ki');
   const envDir = path.join(root, 'umgebung');
   const modelDir = path.join(root, 'modelle');
@@ -138,20 +138,43 @@ function register({ ipcMain, queue, store, tools }) {
     return total / 1024 ** 3;
   }
 
+  // Python, Grafikkarte und Ordnergröße brauchen Sekunden. Sie werden im Hintergrund ermittelt,
+  // damit die Seite sofort erscheint, und danach als Ergänzung nachgeschickt.
+  const slowInfo = { checked: false, python: null, gpu: null, usedGb: null };
+  let slowCheck = null;
+
+  function refreshSlowInfo() {
+    slowCheck ??= (async () => {
+      const [python, gpu, usedGb] = await Promise.all([
+        findPython(),
+        exec('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader']),
+        fsSync.existsSync(markerFile) ? folderSizeGb() : 0,
+      ]);
+      Object.assign(slowInfo, {
+        checked: true,
+        python,
+        gpu: gpu?.split(/\r?\n/)[0] ?? null,
+        usedGb: Number(usedGb.toFixed(1)),
+      });
+      slowCheck = null;
+      send('ai:statusChanged');
+    })();
+    return slowCheck;
+  }
+
   async function status() {
     const installed = fsSync.existsSync(markerFile);
-    const python = await findPython();
-    const gpu = (await exec('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader']))?.split(/\r?\n/)[0] ?? null;
     const disk = await fs.statfs(app.getPath('userData'));
     const saved = store.get('settings').aiModel ?? 'small';
     const downloaded = MODELS.filter((model) => fsSync.existsSync(modelPath(model)));
     return {
       installed,
-      python,
-      gpu,
+      checked: slowInfo.checked,
+      python: slowInfo.python,
+      gpu: slowInfo.gpu,
       installSizeGb: INSTALL_SIZE_GB,
       freeGb: Math.floor((disk.bavail * disk.bsize) / 1024 ** 3),
-      usedGb: installed ? Number((await folderSizeGb()).toFixed(1)) : 0,
+      usedGb: installed ? slowInfo.usedGb : 0,
       // Ist das gewählte Modell nicht vorhanden, gilt das erste heruntergeladene.
       selected: downloaded.some((model) => model.id === saved) ? saved : downloaded[0]?.id ?? saved,
       models: MODELS.map((model) => ({ ...model, downloaded: downloaded.includes(model) })),
@@ -382,19 +405,29 @@ function register({ ipcMain, queue, store, tools }) {
   }
 
   ipcMain.handle('ai:status', status);
+  refreshSlowInfo();
 
   handle('ai:install', () => {
-    queue.add({ title: 'KI-Paket installieren', kind: 'ai', run: (job) => runInstall(job) });
+    queue.add({
+      title: 'KI-Paket installieren',
+      kind: 'ai',
+      run: (job) => runInstall(job).finally(refreshSlowInfo),
+    });
   });
 
   handle('ai:downloadModel', (id) => {
     const model = findModel(id);
-    queue.add({ title: `KI-Modell ${model.label}`, kind: 'ai', run: (job) => runDownload(model, job) });
+    queue.add({
+      title: `KI-Modell ${model.label}`,
+      kind: 'ai',
+      run: (job) => runDownload(model, job).finally(refreshSlowInfo),
+    });
   });
 
   handle('ai:removeModel', async (id) => {
     stopWorker();
     await fs.rm(modelPath(findModel(id)), { force: true });
+    refreshSlowInfo();
   });
 
   handle('ai:selectModel', (id) => {
@@ -406,6 +439,7 @@ function register({ ipcMain, queue, store, tools }) {
     stopWorker();
     await closeSession();
     await fs.rm(root, { recursive: true, force: true });
+    refreshSlowInfo();
   });
 
   handle('ai:prepare', async (options) => {

@@ -24,6 +24,8 @@ const INVOKE_CHANNELS = [
   'dialog:pickSubtitle',
   'tools:start',
   'dialog:pickTrack',
+  'dialog:pickVideos',
+  'dialog:pickVideoFolder',
   'mkv:read',
   'mkv:save',
   'mkv:extract',
@@ -42,7 +44,7 @@ const INVOKE_CHANNELS = [
   'ai:export',
 ];
 
-const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'app:openInCut'];
+const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'app:openInCut', 'ai:statusChanged'];
 
 contextBridge.exposeInMainWorld('vitool', {
   invoke(channel, ...args) {
