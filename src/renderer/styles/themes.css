@@ -1,4 +1,5 @@
-/* Farbschemata. Aurora ist der Grundwert aus theme.css und effects.css, hier stehen nur Abweichungen.
+/* Farbschemata. Die Grundwerte in theme.css und effects.css sind Aurora, hier stehen die Abweichungen.
+   Standard für neue Nutzer ist Ozean (DEFAULT_THEME in src/renderer/utils/themes.js).
    Neue Themes: Block anlegen und in src/renderer/utils/themes.js eintragen. */
 
 :root[data-theme='ocean'] {

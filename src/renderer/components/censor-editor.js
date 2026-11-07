@@ -64,7 +64,7 @@ export class CensorEditor {
     // Die Seite darf die Zeitleiste direkt unter das Video setzen.
     const timelineRoot = el('div', { class: 'timeline' });
     this.timelineRoot = timelineRoot;
-    // Die grüne Leiste sieht aus wie beim Schneiden, bestimmt aber nur, wann das Feld zu sehen ist.
+    // Die Leiste sieht aus wie beim Schneiden, bestimmt aber nur, wann das Feld zu sehen ist.
     this.timelineHint = el('p', { class: 'muted timeline-hint', hidden: true });
     this.timeline = new Timeline(timelineRoot, {
       // Ein Abschnitt darf nicht in den Nachbarn hineinragen.
@@ -375,7 +375,7 @@ export class CensorEditor {
     const field = this.current();
     this.timelineHint.hidden = !field;
     this.timelineHint.textContent = field
-      ? t('Grüne Leisten: Zeiträume, in denen Feld {number} zu sehen ist. Exportiert wird immer das ganze Video, zum Kürzen nutze vorher „Schneiden“.', { number: this.active + 1 })
+      ? t('Die Leisten zeigen, wann Feld {number} zu sehen ist. Exportiert wird immer das ganze Video, zum Kürzen nutze vorher „Schneiden“.', { number: this.active + 1 })
       : '';
     if (!this.media) return;
     if (field) this.activeRange = Math.min(this.activeRange, Math.max(0, field.ranges.length - 1));
