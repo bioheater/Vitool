@@ -105,6 +105,11 @@ npm start
 
 `npm run installer` builds the Windows installer into `dist`.
 
+## Contributing
+
+Bug reports and ideas are welcome as [issues](https://github.com/bioheater/Vitool/issues).
+If you would like to contribute code, please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+
 ## License
 
 Vitool is free and open-source software under the [GNU AGPL-3.0](LICENSE).
