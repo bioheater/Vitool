@@ -672,5 +672,7 @@
   "Lizenz": "License",
   "AGPL-3.0, freie Software": "AGPL-3.0, free software",
   "Lizenzen anzeigen": "Show licenses",
-  "Die Leisten zeigen, wann Feld {number} zu sehen ist. Exportiert wird immer das ganze Video, zum Kürzen nutze vorher „Schneiden“.": "The bars show when field {number} is visible. The whole video is always exported; to shorten it, use “Cut” first."
+  "Die Leisten zeigen, wann Feld {number} zu sehen ist. Exportiert wird immer das ganze Video, zum Kürzen nutze vorher „Schneiden“.": "The bars show when field {number} is visible. The whole video is always exported; to shorten it, use “Cut” first.",
+  "Glas-Effekt": "Glass effect",
+  "Was hinter Vitool liegt, schimmert leicht durch den Hintergrund. Nur unter Windows 11.": "Whatever is behind Vitool shimmers softly through the background. Windows 11 only."
 }

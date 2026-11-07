@@ -1,7 +1,7 @@
 // Bereich Einstellungen: Sprache, Standard-Download-Ordner und Infos zu Vitool.
 import { el, pageHeader } from '../utils/dom.js';
 import { t, LANGUAGE } from '../utils/i18n.js';
-import { THEMES, applyTheme } from '../utils/themes.js';
+import { THEMES, applyTheme, applyGlass } from '../utils/themes.js';
 import { showLicenses } from '../components/license-dialog.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
@@ -32,6 +32,8 @@ async function changeLanguage(language) {
 // Ein Theme wirkt sofort, ohne Neustart.
 async function chooseTheme(id) {
   const theme = applyTheme(id);
+  // Mit Glas muss Windows erfahren, ob das neue Theme hell oder dunkel ist.
+  if (document.documentElement.hasAttribute('data-glass')) applyGlass(true);
   parts.themes.forEach((tile) => {
     const active = tile.dataset.theme === theme;
     tile.classList.toggle('active', active);
@@ -159,6 +161,11 @@ function buildPage(root) {
     tools: el('div', { class: 'stack' }),
     update: el('div', { class: 'stack' }),
     licenseRoot: el('div', {}),
+    glass: el('input', {
+      type: 'checkbox',
+      checked: document.documentElement.hasAttribute('data-glass'),
+      onchange: (event) => applyGlass(event.target.checked),
+    }),
     language: el('select', {
       class: 'input',
       'aria-label': t('Sprache'),
@@ -184,6 +191,8 @@ function buildPage(root) {
     el('section', { class: 'card stack' },
       el('h2', {}, t('Design')),
       el('div', { class: 'theme-grid', role: 'group', 'aria-label': t('Farbschema') }, ...parts.themes),
+      el('label', { class: 'check' }, parts.glass, el('span', {}, t('Glas-Effekt'))),
+      el('p', { class: 'muted' }, t('Was hinter Vitool liegt, schimmert leicht durch den Hintergrund. Nur unter Windows 11.')),
     ),
     el('section', { class: 'card stack' },
       el('h2', {}, t('Downloads')),

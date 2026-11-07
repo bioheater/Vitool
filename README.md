@@ -64,7 +64,7 @@
 ![Transcription with two speakers](docs/screenshots/transcribe.png)
 
 ### And also
-- Six color themes, English and German interface
+- Seven color themes with a subtle glass effect on Windows 11, English and German interface
 - Send a file from one area to the next, for example from Download to Cut
 - Updates from GitHub with one click in the settings
 

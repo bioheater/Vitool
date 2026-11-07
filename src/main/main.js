@@ -1,7 +1,7 @@
 // Startpunkt der App: öffnet das Fenster und verbindet Oberfläche und Hintergrund.
 const path = require('path');
 const fs = require('fs/promises');
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } = require('electron');
 
 const { Store } = require('./core/store');
 const { JobQueue } = require('./core/job-queue');
@@ -32,6 +32,11 @@ const features = [
 ];
 
 let win = null;
+
+// Glas ist Standard. Nur wer es ausdrücklich abschaltet, bekommt das feste Fenster.
+function glassOn(value) {
+  return value !== false && value !== 'off';
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -93,7 +98,7 @@ app.whenReady().then(() => {
 
   ipcMain.on('i18n:get', (event) => {
     // Das Farbschema kommt gleich mit, damit beim Start nichts im falschen Design aufblitzt.
-    event.returnValue = { language: currentLanguage(), strings: translations(), languages: LANGUAGES, theme: store.get('settings').theme ?? 'ocean' };
+    event.returnValue = { language: currentLanguage(), strings: translations(), languages: LANGUAGES, theme: store.get('settings').theme ?? 'studio', glass: glassOn(store.get('settings').glass) };
   });
   // Ein Sprachwechsel startet Vitool neu, damit wirklich jeder Text in der neuen Sprache erscheint.
   ipcMain.handle('app:setLanguage', (_event, language) => {
@@ -102,6 +107,16 @@ app.whenReady().then(() => {
     if (queue.list().some((job) => job.status === 'running' || job.status === 'queued')) return { ok: true, restartLater: true };
     app.relaunch();
     app.exit(0);
+    return { ok: true };
+  });
+  // Glas unter Windows 11: "Acrylic" zeigt die Fenster hinter Vitool verschwommen.
+  // Windows tönt es hell oder dunkel, passend zum Theme.
+  ipcMain.handle('app:setGlass', (_event, on, light = false) => {
+    store.set('settings', { ...store.get('settings'), glass: Boolean(on) });
+    if (!win || process.platform !== 'win32') return { ok: false };
+    nativeTheme.themeSource = on ? (light ? 'light' : 'dark') : 'system';
+    win.setBackgroundColor(on ? '#00000000' : '#101216');
+    win.setBackgroundMaterial(on ? 'acrylic' : 'none');
     return { ok: true };
   });
   ipcMain.handle('app:restart', () => {

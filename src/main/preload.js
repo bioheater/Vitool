@@ -71,6 +71,7 @@ const INVOKE_CHANNELS = [
   'app:restart',
   'app:info',
   'app:licenses',
+  'app:setGlass',
 ];
 
 const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged', 'update:status'];

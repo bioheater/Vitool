@@ -148,14 +148,12 @@ body {
   margin-bottom: 20px;
 }
 
+/* Schlicht in Schriftfarbe: Ein Farbverlauf im Titel wirkte zu verspielt. */
 .page-header h1 {
-  background: var(--gradient);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  font-size: 30px;
-  font-weight: 750;
-  letter-spacing: -0.4px;
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.3px;
   margin: 0 0 2px;
   width: fit-content;
 }
@@ -345,7 +343,7 @@ body {
 .theme-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
 }
 
 .theme-tile {
