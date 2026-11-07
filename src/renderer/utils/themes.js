@@ -15,14 +15,44 @@ export const THEMES = [
 // Studio ist der Standard für alle, die noch kein Theme gewählt haben.
 export const DEFAULT_THEME = 'studio';
 
+// Die Fensterknöpfe von Windows liegen über der eigenen Titelleiste. Sie bekommen deren Farbe und
+// die Schriftfarbe des Themes. Electron versteht nur klassische Farbangaben. Deshalb wird jede
+// CSS-Farbe, auch eine Mischfarbe mit Transparenz, als ein Pixel gemalt und als rgba() ausgelesen.
+function cssColor(value) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1;
+  canvas.height = 1;
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  context.fillStyle = value;
+  context.fillRect(0, 0, 1, 1);
+  const [r, g, b, a] = context.getImageData(0, 0, 1, 1).data;
+  return `rgba(${r}, ${g}, ${b}, ${(a / 255).toFixed(3)})`;
+}
+
+// Mit Glas ist die Leiste halbdurchsichtig. Windows würde den Hintergrund hinter den Knöpfen anders
+// mischen, deshalb bleibt der Knopfbereich dann ganz durchsichtig und zeigt Vitools eigene Leiste.
+export function syncTitleBar() {
+  requestAnimationFrame(() => {
+    const titlebar = document.getElementById('titlebar');
+    if (!titlebar) return;
+    const glass = document.documentElement.hasAttribute('data-glass');
+    window.vitool.invoke('app:setTitleBar', {
+      color: glass ? 'rgba(0, 0, 0, 0)' : cssColor(getComputedStyle(titlebar).backgroundColor),
+      symbolColor: cssColor(getComputedStyle(document.body).color),
+    });
+  });
+}
+
 // Glas: Die Seite lässt ihren Hintergrund leicht durchscheinen, das Fenster liefert Acrylic.
 export function applyGlass(on) {
   document.documentElement.toggleAttribute('data-glass', on);
   window.vitool.invoke('app:setGlass', on, document.documentElement.dataset.theme === 'light');
+  syncTitleBar();
 }
 
 export function applyTheme(id) {
   const theme = THEMES.some((entry) => entry.id === id) ? id : DEFAULT_THEME;
   document.documentElement.dataset.theme = theme;
+  syncTitleBar();
   return theme;
 }

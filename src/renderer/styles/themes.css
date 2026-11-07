@@ -214,6 +214,7 @@
   display: none;
 }
 
+:root[data-glass] .titlebar,
 :root[data-glass] .sidebar,
 :root[data-glass] .queue {
   background: color-mix(in srgb, var(--chrome) 62%, transparent);

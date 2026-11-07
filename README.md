@@ -26,6 +26,8 @@
 - Audio only, single sections of a video, or whole playlists
 - Download history with quick access to your files
 
+![Checking a YouTube link before downloading](docs/screenshots/download.png)
+
 ### Cut
 - Lossless cuts in seconds, or frame-exact cuts when precision matters
 - Several sections at once, saved separately or joined into one file
@@ -112,6 +114,10 @@ you have to make its full source code available under the same license.
 The name **Vitool** and the logo are not covered by the AGPL: modified versions need their own name and logo.
 Details, the licenses of all third-party components and the required attributions are in
 [LICENSE-NOTICE.md](LICENSE-NOTICE.md).
+
+The screenshots show the Blender open movies *Big Buck Bunny* and *Tears of Steel*,
+© Blender Foundation ([blender.org](https://www.blender.org)), licensed under
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
 
 ## Responsible use
 

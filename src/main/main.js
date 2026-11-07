@@ -1,6 +1,8 @@
 // Startpunkt der App: öffnet das Fenster und verbindet Oberfläche und Hintergrund.
 const path = require('path');
 const fs = require('fs/promises');
+const fsSync = require('fs');
+const crypto = require('crypto');
 const { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } = require('electron');
 
 const { Store } = require('./core/store');
@@ -33,9 +35,52 @@ const features = [
 
 let win = null;
 
+const TITLE_BAR_HEIGHT = 34;
+
 // Glas ist Standard. Nur wer es ausdrücklich abschaltet, bekommt das feste Fenster.
 function glassOn(value) {
   return value !== false && value !== 'off';
+}
+
+// Windows merkt sich Taskleistensymbole nach ihrem Pfad und liest eine geänderte Datei nicht neu ein.
+// Deshalb bekommt es eine Kopie, deren Name sich mit dem Inhalt ändert. Ein neues Logo erscheint so sofort.
+function taskbarIcon() {
+  const source = path.join(__dirname, '..', '..', 'assets', 'icon.ico');
+  try {
+    const content = fsSync.readFileSync(source);
+    const hash = crypto.createHash('sha1').update(content).digest('hex').slice(0, 10);
+    const folder = path.join(app.getPath('userData'), 'symbole');
+    const target = path.join(folder, `icon-${hash}.ico`);
+    if (!fsSync.existsSync(target)) {
+      fsSync.mkdirSync(folder, { recursive: true });
+      // Ältere Kopien werden nicht mehr gebraucht.
+      for (const name of fsSync.readdirSync(folder)) fsSync.rmSync(path.join(folder, name), { force: true });
+      fsSync.writeFileSync(target, content);
+    }
+    updatePinnedShortcut(target);
+    return target;
+  } catch {
+    return source;
+  }
+}
+
+// Beim Anheften legt Windows eine eigene Verknüpfung an und schreibt das damalige Symbol hinein.
+// Zeigt sie auf diesen Start von Vitool, bekommt sie das aktuelle Symbol, sonst bliebe das alte angeheftet.
+function updatePinnedShortcut(icon) {
+  const folder = path.join(app.getPath('appData'), 'Microsoft', 'Internet Explorer', 'Quick Launch', 'User Pinned', 'ImplicitAppShortcuts');
+  if (!fsSync.existsSync(folder)) return;
+  for (const entry of fsSync.readdirSync(folder, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const link = path.join(folder, entry.name, 'Vitool.lnk');
+    if (!fsSync.existsSync(link)) continue;
+    try {
+      const shortcut = shell.readShortcutLink(link);
+      if (path.resolve(shortcut.target) !== path.resolve(process.execPath) || shortcut.icon === icon) continue;
+      shell.writeShortcutLink(link, 'update', { icon, iconIndex: 0 });
+    } catch {
+      // Eine fremde oder beschädigte Verknüpfung wird nicht angefasst.
+    }
+  }
 }
 
 function createWindow() {
@@ -48,6 +93,10 @@ function createWindow() {
     title: 'Vitool',
     icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
     autoHideMenuBar: true,
+    // Die Titelleiste zeichnet Vitool selbst in der Farbe der Seitenleiste. Windows liefert nur
+    // die drei Fensterknöpfe, deren Farben die Oberfläche passend zum Theme setzt.
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#141416', symbolColor: '#e7e9ed', height: TITLE_BAR_HEIGHT },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -62,7 +111,7 @@ function createWindow() {
   if (process.platform === 'win32' && !app.isPackaged) {
     win.setAppDetails({
       appId: APP_ID,
-      appIconPath: path.join(__dirname, '..', '..', 'assets', 'icon.ico'),
+      appIconPath: taskbarIcon(),
       appIconIndex: 0,
       relaunchCommand: `"${process.execPath}" "${app.getAppPath()}"`,
       relaunchDisplayName: 'Vitool',
@@ -117,6 +166,11 @@ app.whenReady().then(() => {
     nativeTheme.themeSource = on ? (light ? 'light' : 'dark') : 'system';
     win.setBackgroundColor(on ? '#00000000' : '#101216');
     win.setBackgroundMaterial(on ? 'acrylic' : 'none');
+    return { ok: true };
+  });
+  ipcMain.handle('app:setTitleBar', (_event, { color, symbolColor }) => {
+    if (!win || process.platform !== 'win32') return { ok: false };
+    win.setTitleBarOverlay({ color, symbolColor, height: TITLE_BAR_HEIGHT });
     return { ok: true };
   });
   ipcMain.handle('app:restart', () => {

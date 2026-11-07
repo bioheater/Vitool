@@ -3,7 +3,22 @@
   display: grid;
   grid-template-columns: var(--sidebar-width, 208px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) auto;
-  height: 100vh;
+  height: calc(100vh - var(--titlebar-height));
+}
+
+/* Eigene Titelleiste in der Farbe der Seitenleiste. Sie dient zum Verschieben des Fensters,
+   rechts liegen die Fensterknöpfe von Windows darüber. */
+:root {
+  --titlebar-height: 34px;
+}
+
+.titlebar {
+  -webkit-app-region: drag;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  height: var(--titlebar-height);
+  position: relative;
+  z-index: 1;
 }
 
 .sidebar {
