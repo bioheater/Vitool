@@ -5,6 +5,7 @@ import { formatTime } from '../utils/time.js';
 import { EffectPreview } from '../components/effect-preview.js';
 import { createFileDrop } from '../components/file-drop.js';
 import { createSendTo } from '../components/send-to.js';
+import { manageCard } from '../components/manage-card.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { SectionEditor } from '../components/section-editor.js';
 import { t, formatNumber } from '../utils/i18n.js';
@@ -120,7 +121,7 @@ function renderSetup() {
   const ready = status.installed && hasModel;
 
   parts.setup.hidden = Boolean(state.media);
-  parts.setup.replaceChildren(...[
+  const cards = [
     el('section', { class: 'card stack' },
       el('h2', {}, status.installed ? t('KI-Paket') : t('Freiwilliges Zusatzpaket')),
       el('p', { class: 'muted' }, t('KI-Maske nutzt SAM 2.1 von Meta: Du klickst ein Objekt an, die KI erkennt seine Form und verfolgt es durchs Video. Alles läuft nur auf deinem Rechner, es wird kein Video hochgeladen. Vitool funktioniert auch ohne dieses Paket vollständig.')),
@@ -138,7 +139,21 @@ function renderSetup() {
       el('p', { class: 'muted' }, t('Du kannst ein oder mehrere Modelle laden. Größere sind genauer, aber langsamer.')),
       el('div', { class: 'model-grid' }, ...status.models.map(modelCard)),
     ) : null,
-  ].filter(Boolean));
+  ].filter(Boolean);
+  // Fehlt noch etwas, steht die Einrichtung offen ganz oben. Danach rutscht sie zugeklappt unter die Ablage.
+  const selected = status.models.find((model) => model.id === status.selected && model.downloaded);
+  const used = status.usedGb === null ? '' : ` · ${t('belegt {size} GB', { size: formatNumber(status.usedGb) })}`;
+  parts.setup.replaceChildren(...(ready
+    ? [manageCard({
+      title: t('Modelle und KI-Paket'),
+      summary: `${t('Modell: {name}', { name: selected?.label ?? '–' })}${used}`,
+      open: state.manageOpen,
+      onToggle: (open) => {
+        state.manageOpen = open;
+      },
+      children: cards,
+    })]
+    : cards));
   parts.drop.hidden = !ready || Boolean(state.media);
 }
 
@@ -640,8 +655,9 @@ function buildPage(root) {
   root.append(
     pageHeader(t('KI-Maske'), t('Objekte anklicken, automatisch verfolgen und bearbeiten.')),
     parts.message,
-    parts.setup,
+    // Die Ablage kommt zuerst. Solange etwas fehlt, ist sie ausgeblendet und die Einrichtung steht oben.
     parts.drop,
+    parts.setup,
     parts.workspace,
   );
   parts.drop.hidden = true;

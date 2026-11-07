@@ -1,0 +1,79 @@
+/* Farbschemata. Aurora ist der Grundwert aus theme.css und effects.css, hier stehen nur Abweichungen.
+   Neue Themes: Block anlegen und in src/renderer/utils/themes.js eintragen. */
+
+:root[data-theme='ocean'] {
+  --bg: #080d18;
+  --surface: rgba(18, 28, 46, 0.72);
+  --surface-2: rgba(34, 50, 76, 0.72);
+  --chrome: rgba(10, 16, 30, 0.7);
+  --menu: #111b2e;
+  --accent: #38bdf8;
+  --accent-text: #04202e;
+  --accent-2: #22d3ee;
+  --accent-3: #6366f1;
+}
+
+:root[data-theme='sunset'] {
+  --bg: #120b10;
+  --surface: rgba(38, 22, 30, 0.72);
+  --surface-2: rgba(62, 38, 50, 0.72);
+  --chrome: rgba(24, 12, 18, 0.7);
+  --menu: #24141c;
+  --accent: #fb923c;
+  --accent-text: #2a1003;
+  --accent-2: #f472b6;
+  --accent-3: #a855f7;
+  --on-accent: #1d0a06;
+}
+
+:root[data-theme='forest'] {
+  --bg: #08110c;
+  --surface: rgba(20, 34, 26, 0.72);
+  --surface-2: rgba(36, 56, 44, 0.72);
+  --chrome: rgba(10, 20, 14, 0.7);
+  --menu: #12201a;
+  --accent: #a3e635;
+  --accent-text: #172606;
+  --accent-2: #34d399;
+  --accent-3: #14b8a6;
+  --on-accent: #0b1a08;
+}
+
+/* Graphit: ohne bunte Akzente, nur Grautöne und Weiß. */
+:root[data-theme='graphite'] {
+  --bg: #0c0c0e;
+  --surface: rgba(28, 28, 32, 0.76);
+  --surface-2: rgba(48, 48, 54, 0.76);
+  --chrome: rgba(16, 16, 18, 0.74);
+  --menu: #1a1a1e;
+  --accent: #f1f2f4;
+  --accent-text: #111114;
+  --accent-2: #b8bcc6;
+  --accent-3: #6e7380;
+  --on-accent: #111114;
+}
+
+/* Hell: eigene Flächen, Linien und Schrift, die Akzente etwas dunkler für genug Kontrast. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #eef1f6;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-2: rgba(226, 231, 240, 0.9);
+  --line: #0f172a;
+  --well: #ffffff;
+  --chrome: rgba(250, 251, 253, 0.8);
+  --menu: #ffffff;
+  --border: color-mix(in srgb, var(--line) 13%, transparent);
+  --text: #151a24;
+  --muted: #5a6373;
+  --accent: #0d9f6e;
+  --accent-text: #ffffff;
+  --accent-2: #0891b2;
+  --accent-3: #7c3aed;
+  --on-accent: #ffffff;
+  --glow: 0 8px 24px color-mix(in srgb, var(--accent-2) 22%, transparent);
+}
+
+:root[data-theme='light'] .aurora span {
+  opacity: 0.14;
+}

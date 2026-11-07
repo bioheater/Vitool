@@ -14,6 +14,9 @@ import { el, icon } from './utils/dom.js';
 import { setupSidebar } from './components/sidebar.js';
 import { ICONS } from './utils/icons.js';
 import { setNavigator } from './utils/navigation.js';
+import { applyTheme } from './utils/themes.js';
+
+applyTheme(window.vitool.i18n.theme);
 
 // Neue Bereiche: Seite anlegen und hier eintragen.
 const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage, aiPage, transcribePage, settingsPage];

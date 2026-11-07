@@ -5,7 +5,7 @@ const fsSync = require('fs');
 const os = require('os');
 const path = require('path');
 const { pathToFileURL } = require('url');
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, shell } = require('electron');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
@@ -26,6 +26,15 @@ const MODELS = [
   { id: 'turbo', repo: 'mobiuslabsgmbh/faster-whisper-large-v3-turbo', label: 'Large Turbo', sizeMb: 1547, text: t('Sehr genau und trotzdem schnell'), recommended: true },
   { id: 'large', repo: 'Systran/faster-whisper-large-v3', label: 'Large', sizeMb: 2948, text: t('Am genauesten, am langsamsten') },
 ];
+// Sprechererkennung mit pyannote. Das Modell ist frei, Hugging Face verlangt aber einmal die Zustimmung zu den Bedingungen.
+// PyTorch für CUDA 12.8 läuft auch auf den neuesten NVIDIA-Karten.
+const SPEAKER_PAGES = {
+  model: `${HF_BASE}/pyannote/speaker-diarization-community-1`,
+  token: `${HF_BASE}/settings/tokens`,
+};
+const TORCH_CUDA_INDEX = 'https://download.pytorch.org/whl/cu128';
+const TORCH_VERSION = '2.11.0';
+const SPEAKER_SIZE_MB = { gpu: 3500, cpu: 1100 };
 const INSTALL_SIZE_GB = 1.5;
 const INSTALL_SIZE_CPU_GB = 0.2;
 const SKIPPED_FILES = ['.gitattributes', 'README.md'];
@@ -45,6 +54,8 @@ function register({ ipcMain, queue, store, tools, send }) {
     .forEach((name) => fs.rm(path.join(os.tmpdir(), name), { recursive: true, force: true }).catch(() => {})))
     .catch(() => {});
 
+  const speakerDir = path.join(modelDir, 'sprecher');
+  const speakersReady = () => fsSync.existsSync(path.join(speakerDir, 'config.yaml'));
   const modelPath = (model) => path.join(modelDir, model.id);
   const findModel = (id) => {
     const model = MODELS.find((entry) => entry.id === id);
@@ -85,7 +96,101 @@ function register({ ipcMain, queue, store, tools, send }) {
       usedGb: installed ? slowInfo.usedGb : 0,
       selected: downloaded.some((model) => model.id === saved) ? saved : downloaded[0]?.id ?? saved,
       models: MODELS.map((model) => ({ ...model, downloaded: downloaded.includes(model) })),
+      speakers: {
+        installed: installed && speakersReady(),
+        sizeMb: slowInfo.gpu || !slowInfo.checked ? SPEAKER_SIZE_MB.gpu : SPEAKER_SIZE_MB.cpu,
+        pages: SPEAKER_PAGES,
+      },
     };
+  }
+
+  // Erst die Pakete, dann das Modell. Scheitert nur das Modell am Zugang, geht der zweite Versuch schnell,
+  // weil pip die Pakete dann schon hat. Der Token wird nur für den Download gebraucht und nirgends gespeichert.
+  async function runSpeakerInstall(token, job) {
+    const hasNvidia = Boolean(await exec('nvidia-smi', ['-L']));
+    // Alles in einem Aufruf mit fester Version: Sonst zieht ein Hilfspaket später ein neueres PyTorch ohne Grafikkarte nach.
+    job.update({ detail: hasNvidia ? t('Lädt PyTorch für die Grafikkarte, das dauert einige Minuten') : t('Lädt PyTorch'), progress: 2 });
+    await run(envPython, [
+      '-m', 'pip', 'install', '--disable-pip-version-check',
+      `torch==${TORCH_VERSION}`, `torchaudio==${TORCH_VERSION}`, 'pyannote.audio',
+      ...(hasNvidia ? ['--extra-index-url', TORCH_CUDA_INDEX] : []),
+    ], { signal: job.signal });
+
+    job.update({ detail: t('Lädt das Modell zur Sprechererkennung'), progress: 90 });
+    const partDir = `${speakerDir}.part`;
+    await fs.rm(partDir, { recursive: true, force: true });
+    let workerError = null;
+    try {
+      await run(envPython, ['-u', pythonScript('speaker_worker.py'), 'download', partDir], {
+        signal: job.signal,
+        // Ohne Token gilt eine vorhandene Anmeldung bei Hugging Face auf diesem Rechner.
+        env: token ? { HF_TOKEN: token } : {},
+        onLine: (line, stream) => {
+          if (stream === 'stdout' && line.startsWith('{')) workerError = JSON.parse(line).error ?? workerError;
+        },
+      });
+    } catch (error) {
+      await fs.rm(partDir, { recursive: true, force: true });
+      if (workerError === 'gated') {
+        throw new UserError(t('Hugging Face hat den Zugang verweigert. Stimme auf der Modellseite den Bedingungen zu und gib einen Token ein.'));
+      }
+      if (workerError) throw new Error(workerError);
+      throw error;
+    }
+    await fs.rm(speakerDir, { recursive: true, force: true });
+    await fs.rename(partDir, speakerDir);
+  }
+
+  // Nur die Sprecher neu bestimmen: Der Text aus Whisper bleibt, auch mit Änderungen von Hand.
+  async function redoSpeakers(options, media, job) {
+    if (!speakersReady()) throw new UserError(t('Die Sprechererkennung ist noch nicht eingerichtet.'));
+    const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-text-'));
+    const audio = path.join(temp, 'ton.raw');
+    const transcriptFile = path.join(temp, 'ergebnis.json');
+    try {
+      job.update({ detail: t('Liest den Ton'), progress: 0 });
+      await runFfmpeg(tools.path('ffmpeg'), ['-i', media.path, '-map', '0:a:0', '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', audio], {
+        duration: media.duration,
+        signal: job.signal,
+        onProgress: (part) => job.update({ progress: part * 10, detail: t('Liest den Ton') }),
+      });
+      const { speakerNames: _names, ...transcript } = options.transcript;
+      await fs.writeFile(transcriptFile, JSON.stringify(transcript), 'utf8');
+      await findSpeakers(options, audio, transcriptFile, job, 10);
+      return JSON.parse(await fs.readFile(transcriptFile, 'utf8'));
+    } finally {
+      await fs.rm(temp, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  // Zweite Runde nach Whisper: pyannote in einem eigenen Prozess, das Ergebnis ergänzt die Datei aus Whisper.
+  async function findSpeakers(options, audio, transcriptFile, job, from) {
+    const jobFile = path.join(path.dirname(transcriptFile), 'sprecher.json');
+    await fs.writeFile(jobFile, JSON.stringify({
+      model: speakerDir,
+      audio,
+      transcript: transcriptFile,
+      count: Number(options.speakerCount) || null,
+    }), 'utf8');
+    let device = null;
+    let workerError = null;
+    await run(envPython, ['-u', pythonScript('speaker_worker.py'), jobFile], {
+      signal: job.signal,
+      onLine: (line, stream) => {
+        if (stream !== 'stdout' || !line.startsWith('{')) return;
+        const message = JSON.parse(line);
+        if (message.device) device = message.device;
+        if (message.error) workerError = message.error;
+        if (message.progress !== undefined) {
+          const where = device === 'cpu' ? t('Erkennt Sprecher (Prozessor, dauert länger)') : t('Erkennt Sprecher');
+          job.update({ progress: from + message.progress * (100 - from), detail: where });
+        }
+      },
+    }).catch((error) => {
+      if (workerError === 'memory') throw new UserError(t('Der Speicher reicht für die Sprechererkennung nicht.'));
+      if (workerError) throw new Error(workerError);
+      throw error;
+    });
   }
 
   async function runInstall(job) {
@@ -138,7 +243,9 @@ function register({ ipcMain, queue, store, tools, send }) {
   // Immer nur eine Erkennung gleichzeitig: Zwei Sprachmodelle würden sich Grafikkarte und Speicher teilen.
   let transcribeLock = Promise.resolve();
 
-  async function runTranscribe(options, media, job) {
+  const runTranscribe = (options, media, job) => exclusive(job, () => transcribeNow(options, media, job));
+
+  async function exclusive(job, action) {
     const previous = transcribeLock;
     let release;
     transcribeLock = new Promise((resolve) => { release = resolve; });
@@ -151,7 +258,7 @@ function register({ ipcMain, queue, store, tools, send }) {
           job.signal.addEventListener('abort', () => reject(new CanceledError()), { once: true });
         }),
       ]);
-      return await transcribeNow(options, media, job);
+      return await action();
     } finally {
       // Ein abgebrochener Wartender gibt erst frei, wenn sein Vorgänger fertig ist.
       previous.then(release);
@@ -160,6 +267,10 @@ function register({ ipcMain, queue, store, tools, send }) {
 
   async function transcribeNow(options, media, job) {
     const model = findModel(options.model);
+    const speakers = Boolean(options.speakers);
+    if (speakers && !speakersReady()) throw new UserError(t('Die Sprechererkennung ist noch nicht eingerichtet.'));
+    // Mit Sprechererkennung bekommt die zweite Runde das letzte Stück des Balkens.
+    const textShare = speakers ? 60 : 95;
     const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-text-'));
     const audio = path.join(temp, 'ton.raw');
     const output = path.join(temp, 'ergebnis.json');
@@ -193,7 +304,7 @@ function register({ ipcMain, queue, store, tools, send }) {
           if (message.error) workerError = message.error;
           if (message.progress !== undefined) {
             const where = device === 'cpu' ? t('Erkennt Sprache (Prozessor, dauert länger)') : t('Erkennt Sprache');
-            job.update({ progress: 5 + message.progress * 95, detail: where });
+            job.update({ progress: 5 + message.progress * textShare, detail: where });
           }
         },
       }).catch((error) => {
@@ -202,6 +313,7 @@ function register({ ipcMain, queue, store, tools, send }) {
         throw error;
       });
 
+      if (speakers) await findSpeakers(options, audio, output, job, 5 + textShare);
       const result = JSON.parse(await fs.readFile(output, 'utf8'));
       return { ...result, model: model.id, translated: Boolean(options.translate) };
     } finally {
@@ -304,6 +416,36 @@ function register({ ipcMain, queue, store, tools, send }) {
     queue.add({ title: t('Sprachmodell {name}', { name: model.label }), kind: 'transcribe', run: (job) => runDownload(model, job).finally(refreshSlowInfo) });
   });
 
+  // Wartet auf das Ende, damit die Oberfläche eine Absage von Hugging Face direkt beim Token-Feld zeigen kann.
+  handle('transcribe:installSpeakers', async (token) => {
+    if (!fsSync.existsSync(markerFile)) throw new UserError(t('Zuerst muss die Transkription installiert sein.'));
+    await new Promise((resolve, reject) => {
+      queue.add({
+        title: t('Sprechererkennung einrichten'),
+        kind: 'transcribe',
+        run: (job) => runSpeakerInstall(String(token ?? '').trim(), job).then(() => {
+          resolve();
+          return null;
+        }, (error) => {
+          reject(error);
+          throw error;
+        }).finally(refreshSlowInfo),
+      });
+    });
+  });
+
+  // PyTorch belegt die meisten Gigabytes und geht mit. Kleinere Hilfspakete bleiben in der Umgebung.
+  handle('transcribe:removeSpeakers', async () => {
+    await fs.rm(speakerDir, { recursive: true, force: true });
+    await run(envPython, ['-m', 'pip', 'uninstall', '-y', 'pyannote.audio', 'torch', 'torchaudio', 'torchcodec']).catch(() => {});
+    refreshSlowInfo();
+  });
+
+  // Nur diese beiden Seiten, kein beliebiger Link aus der Oberfläche.
+  handle('transcribe:openSpeakerPage', (name) => {
+    if (SPEAKER_PAGES[name]) shell.openExternal(SPEAKER_PAGES[name]);
+  });
+
   handle('transcribe:removeModel', async (id) => {
     await fs.rm(modelPath(findModel(id)), { recursive: true, force: true });
     refreshSlowInfo();
@@ -328,6 +470,25 @@ function register({ ipcMain, queue, store, tools, send }) {
         title: t('Transkribieren: {name}', { name: media.name }),
         kind: 'transcribe',
         run: (job) => runTranscribe(options, media, job).then((result) => {
+          resolve(result);
+          return null;
+        }, (error) => {
+          reject(error);
+          throw error;
+        }),
+      });
+    });
+    return { transcript };
+  });
+
+  handle('transcribe:speakers', async (options) => {
+    if (!options.transcript?.segments?.length) throw new UserError(t('Es gibt noch keinen Text.'));
+    const media = await probeMedia(tools.path('ffprobe'), options.filePath);
+    const transcript = await new Promise((resolve, reject) => {
+      queue.add({
+        title: t('Sprecher erkennen: {name}', { name: media.name }),
+        kind: 'transcribe',
+        run: (job) => exclusive(job, () => redoSpeakers(options, media, job)).then((result) => {
           resolve(result);
           return null;
         }, (error) => {

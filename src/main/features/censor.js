@@ -25,12 +25,46 @@ function boxAt(keyframes, time) {
   const before = keyframes[next - 1];
   const after = keyframes[next];
   const part = (time - before.time) / (after.time - before.time);
-  const mix = (key) => before[key] + (after[key] - before[key]) * part;
-  return { x: mix('x'), y: mix('y'), w: mix('w'), h: mix('h'), strength: mix('strength') };
+  const mix = (key) => (before[key] ?? 0) + ((after[key] ?? 0) - (before[key] ?? 0)) * part;
+  return { x: mix('x'), y: mix('y'), w: mix('w'), h: mix('h'), strength: mix('strength'), angle: mix('angle') };
+}
+
+const visibleAt = (field, time) => field.ranges.some((range) => time >= range.start && time <= range.end);
+
+// Gedreht wird jeder Punkt ins Feld zurückgedreht und geprüft, ob er drinliegt.
+function drawRotatedField(mask, field, box, size, top) {
+  const radians = (box.angle * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const halfWidth = (box.w * size.width) / 2;
+  const halfHeight = (box.h * size.height) / 2;
+  const centerX = (box.x + box.w / 2) * size.width;
+  const centerY = (box.y + box.h / 2) * size.height;
+  const reachX = Math.abs(halfWidth * cos) + Math.abs(halfHeight * sin);
+  const reachY = Math.abs(halfWidth * sin) + Math.abs(halfHeight * cos);
+  const ellipse = field.shape === 'ellipse';
+  const firstRow = Math.max(0, Math.floor(centerY - reachY));
+  const lastRow = Math.min(size.height, Math.ceil(centerY + reachY));
+  const firstColumn = Math.max(0, Math.floor(centerX - reachX));
+  const lastColumn = Math.min(size.width, Math.ceil(centerX + reachX));
+  for (let row = firstRow; row < lastRow; row += 1) {
+    const dy = row + 0.5 - centerY;
+    const start = (top + row) * size.width;
+    for (let column = firstColumn; column < lastColumn; column += 1) {
+      const dx = column + 0.5 - centerX;
+      const u = (dx * cos + dy * sin) / halfWidth;
+      const v = (-dx * sin + dy * cos) / halfHeight;
+      if (ellipse ? u * u + v * v <= 1 : Math.abs(u) <= 1 && Math.abs(v) <= 1) mask[start + column] = 255;
+    }
+  }
 }
 
 function drawField(mask, field, time, size, top) {
   const box = boxAt(field.keyframes, time);
+  if (Math.abs(box.angle) >= 0.01) {
+    drawRotatedField(mask, field, box, size, top);
+    return;
+  }
   const left = Math.max(0, Math.round(box.x * size.width));
   const right = Math.min(size.width, Math.round((box.x + box.w) * size.width));
   const first = Math.max(0, Math.round(box.y * size.height));
@@ -44,10 +78,11 @@ function drawField(mask, field, time, size, top) {
     return;
   }
 
-  const centerX = (left + right) / 2;
-  const centerY = (first + last) / 2;
-  const radiusX = (right - left) / 2;
-  const radiusY = (last - first) / 2;
+  // Ragt das Feld über den Rand, zählt seine volle Größe, sonst würde das Oval gestaucht.
+  const centerX = (box.x + box.w / 2) * size.width;
+  const centerY = (box.y + box.h / 2) * size.height;
+  const radiusX = (box.w * size.width) / 2;
+  const radiusY = (box.h * size.height) / 2;
   for (let row = first; row < last; row += 1) {
     const offset = (row + 0.5 - centerY) / radiusY;
     const reach = radiusX * Math.sqrt(Math.max(0, 1 - offset * offset));
@@ -62,7 +97,7 @@ async function writeMasks(stdin, fields, size, frameCount, fps) {
     const time = frame / fps;
     const mask = Buffer.alloc(size.width * size.height * fields.length);
     fields.forEach((field, index) => {
-      if (time >= field.start && time <= field.end) drawField(mask, field, time, size, index * size.height);
+      if (visibleAt(field, time)) drawField(mask, field, time, size, index * size.height);
     });
     if (!stdin.write(mask)) await Promise.race([once(stdin, 'drain'), once(stdin, 'close')]);
   }
@@ -96,10 +131,10 @@ function effectFilter(field, area, referenceHeight = area.height, tag = null) {
 function strengthCommands(field, tag, area, video, fps) {
   const lines = [];
   let previous = null;
-  const lastFrame = Math.ceil(field.end * fps);
+  const lastFrame = Math.ceil(field.ranges.at(-1).end * fps);
   for (let frame = 0; frame <= lastFrame; frame += 1) {
     const time = frame / fps;
-    const { block, sigma } = effectSizes(boxAt(field.keyframes, Math.max(time, field.start)).strength, video.height);
+    const { block, sigma } = effectSizes(boxAt(field.keyframes, Math.max(time, field.ranges[0].start)).strength, video.height);
     const value = field.effect === 'pixel'
       ? `scale@d${tag} w ${even(area.width / block)}, scale@d${tag} h ${even(area.height / block)}`
       : `gblur@f${tag} sigma ${sigma.toFixed(1)}, gblur@f${tag} sigmaV ${sigma.toFixed(1)}`;
@@ -130,10 +165,22 @@ function fieldArea(field, video) {
   // Volle drei Sigma würden bei starkem Blur in 4K fast das ganze Bild umfassen.
   const effectReach = field.effect === 'blur' ? sigma : field.effect === 'pixel' ? block : 0;
   const margin = Math.ceil(effectReach + 2.5 * featherSigma(field, video) + 4);
-  const left = Math.min(...field.keyframes.map((key) => key.x)) * video.width - margin;
-  const top = Math.min(...field.keyframes.map((key) => key.y)) * video.height - margin;
-  const right = Math.max(...field.keyframes.map((key) => key.x + key.w)) * video.width + margin;
-  const bottom = Math.max(...field.keyframes.map((key) => key.y + key.h)) * video.height + margin;
+  // Gedreht kann das Feld bis zur halben Diagonale um seine Mitte reichen, auch zwischen zwei Keyframes.
+  const rotated = field.keyframes.some((key) => Math.abs(key.angle ?? 0) >= 0.01);
+  const extent = (key) => {
+    const width = key.w * video.width;
+    const height = key.h * video.height;
+    const centerX = key.x * video.width + width / 2;
+    const centerY = key.y * video.height + height / 2;
+    const reachX = rotated ? Math.hypot(width, height) / 2 : width / 2;
+    const reachY = rotated ? Math.hypot(width, height) / 2 : height / 2;
+    return { left: centerX - reachX, top: centerY - reachY, right: centerX + reachX, bottom: centerY + reachY };
+  };
+  const extents = field.keyframes.map(extent);
+  const left = Math.min(...extents.map((box) => box.left)) - margin;
+  const top = Math.min(...extents.map((box) => box.top)) - margin;
+  const right = Math.max(...extents.map((box) => box.right)) + margin;
+  const bottom = Math.max(...extents.map((box) => box.bottom)) + margin;
   const x = Math.max(0, Math.floor(left / 2) * 2);
   const y = Math.max(0, Math.floor(top / 2) * 2);
   return {
@@ -159,8 +206,11 @@ function buildFilter(fields, video, mask, fps) {
     const crop = `crop=${area.width}:${area.height}:${area.x}:${area.y}`;
     const sigma = featherSigma(field, video);
     const soften = sigma > 0.2 ? `,gblur=sigma=${sigma.toFixed(2)}` : '';
-    const during = `between(t,${(field.start - 0.05).toFixed(3)},${(field.end + 0.05).toFixed(3)})`;
-    const startStrength = { ...field, strength: boxAt(field.keyframes, field.start).strength };
+    // Mehrere Abschnitte: Die Einblendung gilt, sobald einer von ihnen passt.
+    const during = field.ranges
+      .map((range) => `between(t,${(range.start - 0.05).toFixed(3)},${(range.end + 0.05).toFixed(3)})`)
+      .join('+');
+    const startStrength = { ...field, strength: boxAt(field.keyframes, field.ranges[0].start).strength };
     let effect = effectFilter(startStrength, area, video.height);
     if (strengthChanges(field)) {
       const file = `staerke${index}.txt`;
@@ -179,26 +229,32 @@ function buildFilter(fields, video, mask, fps) {
   return { filter: chain.join(';'), commands };
 }
 
+// Ältere Felder hatten einen einzigen Zeitraum und eine feste Stärke für das ganze Feld.
+// Ein Feld, das nie zu sehen ist, fällt weg.
+function normalizeFields(fields) {
+  return fields.map((field) => ({
+    ...field,
+    ranges: (field.ranges ?? [{ start: field.start, end: field.end }])
+      .filter((range) => range.end > range.start)
+      .sort((a, b) => a.start - b.start),
+    keyframes: [...field.keyframes]
+      .map((key) => ({ ...key, strength: key.strength ?? field.strength ?? 50, angle: key.angle ?? 0 }))
+      .sort((a, b) => a.time - b.time),
+  })).filter((field) => field.ranges.length > 0 && field.keyframes.length > 0);
+}
+
 function validate(options, media) {
   if (!media.hasVideo) throw new UserError(t('Diese Datei enthält kein Video.'));
   if (!options.folder) throw new UserError(t('Bitte wähle einen Zielordner.'));
   if (options.fields.length === 0) throw new UserError(t('Bitte füge mindestens ein Feld hinzu.'));
-  if (options.fields.some((field) => field.keyframes.length === 0 || !(field.end > field.start))) {
-    throw new UserError(t('Bei einem Feld stimmt der Zeitraum nicht.'));
-  }
+  if (normalizeFields(options.fields).length === 0) throw new UserError(t('Kein Feld ist irgendwann zu sehen.'));
 }
 
 function register({ ipcMain, queue, tools }) {
   async function runCensor(options, media, job) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-'));
     const output = path.join(tempDir, 'ergebnis.mp4');
-    // Ältere Felder hatten eine feste Stärke für das ganze Feld, sie gilt dann für jeden Keyframe.
-    const fields = options.fields.map((field) => ({
-      ...field,
-      keyframes: [...field.keyframes]
-        .map((key) => ({ ...key, strength: key.strength ?? field.strength ?? 50 }))
-        .sort((a, b) => a.time - b.time),
-    }));
+    const fields = normalizeFields(options.fields);
     const fps = Math.round(Math.min(media.fps, MAX_FPS) * 1000) / 1000;
     const video = { width: even(media.width), height: even(media.height) };
     const maskWidth = even(Math.min(MASK_WIDTH, video.width));

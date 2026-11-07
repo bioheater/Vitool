@@ -86,7 +86,8 @@ app.whenReady().then(() => {
   queue.on('change', (jobs) => send('queue:update', jobs));
 
   ipcMain.on('i18n:get', (event) => {
-    event.returnValue = { language: currentLanguage(), strings: translations(), languages: LANGUAGES };
+    // Das Farbschema kommt gleich mit, damit beim Start nichts im falschen Design aufblitzt.
+    event.returnValue = { language: currentLanguage(), strings: translations(), languages: LANGUAGES, theme: store.get('settings').theme ?? 'aurora' };
   });
   // Ein Sprachwechsel startet Vitool neu, damit wirklich jeder Text in der neuen Sprache erscheint.
   ipcMain.handle('app:setLanguage', (_event, language) => {

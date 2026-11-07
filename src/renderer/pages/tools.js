@@ -16,16 +16,17 @@ const GIF_DEFAULT_SECONDS = 5;
 const GIF_LONG_SECONDS = 15;
 
 const TOOLS = [
-  { id: 'gif', label: t('GIF erstellen'), action: t('GIF erstellen'), needsVideo: true },
-  { id: 'audio', label: t('Audio extrahieren'), action: t('Audio extrahieren'), needsAudio: true },
-  { id: 'frame', label: t('Standbild'), action: t('Bild speichern'), needsVideo: true },
-  { id: 'subtitle', label: t('Untertitel einbrennen'), action: t('Untertitel einbrennen'), needsVideo: true },
-  { id: 'censor', label: t('Zensieren'), action: t('Zensiert exportieren'), needsVideo: true },
+  { id: 'gif', label: t('GIF erstellen'), action: t('GIF erstellen'), needsVideo: true, icon: 'layers', text: t('Kurze Animation aus einem Ausschnitt') },
+  { id: 'audio', label: t('Audio extrahieren'), action: t('Audio extrahieren'), needsAudio: true, icon: 'music', text: t('Tonspur als MP3, WAV oder im Original') },
+  { id: 'frame', label: t('Standbild'), action: t('Bild speichern'), needsVideo: true, icon: 'image', text: t('Ein Einzelbild als PNG oder JPG') },
+  { id: 'subtitle', label: t('Untertitel einbrennen'), action: t('Untertitel einbrennen'), needsVideo: true, icon: 'text', text: t('SRT, ASS oder VTT fest ins Bild') },
+  { id: 'censor', label: t('Zensieren'), action: t('Zensiert exportieren'), needsVideo: true, icon: 'target', text: t('Stellen mit Keyframes verdecken') },
 ];
 
 const state = {
   media: null,
   tool: 'gif',
+  preferredTool: null,
   folder: null,
   audioFormat: 'mp3',
   frameFormat: 'png',
@@ -129,7 +130,9 @@ async function openFile(filePath) {
 
   parts.drop.hidden = true;
   parts.workspace.hidden = false;
-  selectTool(TOOLS.find((tool) => toolAvailable(tool, media)).id);
+  const preferred = TOOLS.find((tool) => tool.id === state.preferredTool && toolAvailable(tool, media));
+  state.preferredTool = null;
+  selectTool((preferred ?? TOOLS.find((tool) => toolAvailable(tool, media))).id);
 }
 
 function closeFile() {
@@ -218,11 +221,16 @@ function buildPage(root) {
     message: el('p', { class: 'message', role: 'alert', hidden: true }),
     drop: createFileDrop({
       onFile: openFile,
-      features: [
-        { iconName: 'target', title: t('Zensieren'), text: t('Stellen mit Keyframes verdecken') },
-        { iconName: 'image', title: t('GIF und Standbild'), text: t('Beste Momente als Bild oder Animation') },
-        { iconName: 'music', title: t('Audio extrahieren'), text: t('Tonspur als MP3, WAV oder im Original') },
-      ],
+      title: t('Video hierher ziehen oder ein Werkzeug wählen'),
+      // Ein Klick auf ein Werkzeug fragt die Datei ab und öffnet sie gleich dort.
+      features: TOOLS.map((tool) => ({
+        iconName: tool.icon,
+        title: tool.label,
+        text: tool.text,
+        onSelect: () => {
+          state.preferredTool = tool.id;
+        },
+      })),
     }),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),

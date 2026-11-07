@@ -3,6 +3,7 @@ import { el, pageHeader } from '../utils/dom.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
 import { createSendTo } from '../components/send-to.js';
+import { manageCard } from '../components/manage-card.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { t, formatNumber, LANGUAGE } from '../utils/i18n.js';
 
@@ -35,6 +36,10 @@ const EXPORTS = [
   { format: 'json', text: 'JSON', hint: t('Mit Wortzeiten, zum Weiterverarbeiten') },
 ];
 
+const SPEAKER_COUNTS = [2, 3, 4, 5, 6];
+// Feste Farben, damit derselbe Sprecher in Liste und Namensfeld gleich aussieht.
+const SPEAKER_COLORS = ['#2FC6E8', '#FF7A1A', '#3DDC97', '#FF4FA3', '#B18CFF', '#FFD400', '#8FA3B8', '#FF6B6B'];
+
 const STYLE_CHOICES = [
   { value: 'classic', text: t('Klassisch') },
   { value: 'box', text: 'Box' },
@@ -55,6 +60,9 @@ const state = {
   transcript: null,
   running: false,
   wasRunning: false,
+  speakerInstalling: false,
+  speakerToken: '',
+  speakerError: '',
   burn: { style: 'highlight', position: 'bottom', size: 'medium', color: '#FFD400', preview: true },
 };
 let parts = {};
@@ -100,6 +108,10 @@ function confirmRemoveModel(model) {
   if (window.confirm(t('Modell {name} wirklich entfernen?', { name: model.label }))) act('transcribe:removeModel', model.id);
 }
 
+function confirmRemoveSpeakers() {
+  if (window.confirm(t('Sprechererkennung mit PyTorch wirklich entfernen?'))) act('transcribe:removeSpeakers');
+}
+
 function confirmUninstall() {
   if (window.confirm(t('Die Transkription mit allen Sprachmodellen wirklich vollständig entfernen?'))) act('transcribe:uninstall');
 }
@@ -126,7 +138,7 @@ function renderSetup() {
   const open = Boolean(state.media || state.link || state.batch);
 
   parts.setup.hidden = open;
-  parts.setup.replaceChildren(...[
+  const cards = [
     el('section', { class: 'card stack' },
       el('h2', {}, status.installed ? t('Transkription') : t('Freiwilliges Zusatzpaket')),
       el('p', { class: 'muted' }, t('Transkribieren nutzt Whisper von OpenAI in der schnellen Fassung faster-whisper. Alles läuft nur auf deinem Rechner, es wird nichts hochgeladen. Vitool funktioniert auch ohne dieses Paket vollständig.')),
@@ -144,7 +156,34 @@ function renderSetup() {
       el('p', { class: 'muted' }, t('Du kannst ein oder mehrere Modelle laden. Größere verstehen undeutliche Sprache besser, brauchen aber länger.')),
       el('div', { class: 'model-grid' }, ...status.models.map(modelCard)),
     ) : null,
-  ].filter(Boolean));
+    status.installed ? el('section', { class: 'card stack' },
+      el('h2', {}, t('Sprechererkennung')),
+      ...(status.speakers.installed
+        ? [el('div', { class: 'marker-row' },
+          el('span', { class: 'muted' }, t('Eingerichtet. Beim Transkribieren kannst du unter „Sprecher“ wählen, ob getrennt wird.')),
+          el('button', { class: 'button small', onclick: confirmRemoveSpeakers }, t('Entfernen')))]
+        : speakerSetupParts()),
+    ) : null,
+  ].filter(Boolean);
+  // Fehlt noch etwas, steht die Einrichtung offen da. Danach zugeklappt unter Link und Ablage.
+  // Während die Sprechererkennung eingerichtet wird oder scheitert, bleibt sie offen.
+  const selected = status.models.find((model) => model.id === status.selected && model.downloaded);
+  const summaryParts = [
+    t('Modell: {name}', { name: selected?.label ?? '–' }),
+    status.speakers.installed ? t('Sprechererkennung eingerichtet') : null,
+    status.usedGb === null ? null : t('belegt {size} GB', { size: formatNumber(status.usedGb) }),
+  ].filter(Boolean);
+  parts.setup.replaceChildren(...(ready
+    ? [manageCard({
+      title: t('Modelle und Zusatzpakete'),
+      summary: summaryParts.join(' · '),
+      open: state.manageOpen || state.speakerInstalling || Boolean(state.speakerError),
+      onToggle: (isOpen) => {
+        state.manageOpen = isOpen;
+      },
+      children: cards,
+    })]
+    : cards));
   parts.drop.hidden = !ready || open;
   parts.linkCard.hidden = parts.drop.hidden;
   parts.folderRow.hidden = parts.drop.hidden;
@@ -160,7 +199,15 @@ function renderModelSelect() {
       selected: current ? model.id === current : model.id === state.status.selected,
     }, model.label)));
     updateTranslateHint(fields);
+    renderSpeakerFields(fields);
   });
+}
+
+function speakerSelect(onchange) {
+  return el('select', { class: 'input', 'aria-label': t('Sprecher'), onchange },
+    el('option', { value: '' }, t('Nicht unterscheiden')),
+    el('option', { value: 'auto' }, t('Automatisch erkennen')),
+    ...SPEAKER_COUNTS.map((count) => el('option', { value: String(count) }, t('{count} Sprecher', { count }))));
 }
 
 // Sprache, Modell und Ausgabe gibt es für eine Datei und für den Stapel.
@@ -173,12 +220,17 @@ function settingFields() {
       el('option', { value: 'original' }, t('Gesprochener Sprache')),
       el('option', { value: 'en' }, t('Englisch (übersetzt)'))),
     translateHint: el('p', { class: 'muted', hidden: true }),
+    speakers: speakerSelect(),
+    speakerSetup: el('div', { class: 'marker-row', hidden: true }),
   };
+  fields.speakerRow = el('label', { class: 'field' }, el('span', { class: 'muted' }, t('Sprecher')), fields.speakers);
   fields.rows = [
     el('label', { class: 'field' }, el('span', { class: 'muted' }, t('Sprache')), fields.language),
     el('label', { class: 'field' }, el('span', { class: 'muted' }, t('Modell')), fields.model),
     el('label', { class: 'field' }, el('span', { class: 'muted' }, t('Text in')), fields.output),
     fields.translateHint,
+    fields.speakerRow,
+    fields.speakerSetup,
   ];
   return fields;
 }
@@ -187,7 +239,66 @@ const optionsFrom = (fields) => ({
   language: fields.language.value,
   model: fields.model.value,
   translate: fields.output.value === 'en',
+  speakers: !fields.speakerRow.hidden && fields.speakers.value !== '',
+  speakerCount: Number(fields.speakers.value) || null,
 });
+
+// Ohne den Zusatz gibt es statt der Auswahl eine aufklappbare Einrichtung.
+function renderSpeakerFields(fields) {
+  const { speakers } = state.status;
+  parts.linkSpeakerRow.hidden = !speakers.installed;
+  fields.speakerRow.hidden = !speakers.installed;
+  fields.speakerSetup.hidden = speakers.installed;
+  if (speakers.installed) return;
+  fields.speakerSetup.replaceChildren(el('details', { class: 'speaker-setup', open: state.speakerInstalling || Boolean(state.speakerError) },
+    el('summary', { class: 'muted' }, t('Sprecher unterscheiden: einrichten')),
+    ...speakerSetupParts()));
+}
+
+// pyannote liegt bei Hugging Face hinter einer einmaligen Zustimmung. Der Token wird nur für den Download gebraucht.
+function speakerSetupParts() {
+  const { speakers } = state.status;
+  if (state.speakerInstalling) {
+    return [el('p', { class: 'muted' }, t('Sprechererkennung wird eingerichtet … Den Fortschritt siehst du in der Warteschlange.'))];
+  }
+  const token = el('input', {
+    class: 'input grow',
+    type: 'password',
+    value: state.speakerToken,
+    placeholder: 'hf_…',
+    spellcheck: false,
+    autocomplete: 'off',
+    'aria-label': t('Hugging-Face-Token'),
+    oninput: () => {
+      state.speakerToken = token.value;
+    },
+  });
+  const page = (name, text) => el('button', { class: 'button small', onclick: () => invoke('transcribe:openSpeakerPage', name) }, text);
+  return [
+    el('p', { class: 'muted' }, t('Die Sprechererkennung nutzt pyannote. Download etwa {size} GB, danach läuft alles auf deinem Rechner.', { size: formatNumber(speakers.sizeMb / 1000) })),
+    el('div', { class: 'marker-row' },
+      el('span', {}, t('1. Bei Hugging Face anmelden und auf der Modellseite den Bedingungen zustimmen')),
+      page('model', t('Modellseite öffnen'))),
+    el('div', { class: 'marker-row' },
+      el('span', {}, t('2. Einen Token mit Leserechten erstellen und hier einfügen')),
+      page('token', t('Token erstellen'))),
+    el('div', { class: 'url-row' }, token,
+      el('button', { class: 'button primary', onclick: installSpeakers }, t('Einrichten'))),
+    el('p', { class: 'muted' }, t('Der Token wird nur für den Download gebraucht und nicht gespeichert. Ist dieser Rechner schon bei Hugging Face angemeldet, kannst du das Feld leer lassen.')),
+    state.speakerError ? el('p', { class: 'message' }, state.speakerError) : null,
+  ].filter(Boolean);
+}
+
+async function installSpeakers() {
+  state.speakerInstalling = true;
+  state.speakerError = '';
+  renderSetup();
+  const response = await invoke('transcribe:installSpeakers', state.speakerToken);
+  state.speakerInstalling = false;
+  if (response.ok) state.speakerToken = '';
+  else if (!response.canceled) state.speakerError = response.error;
+  await refresh();
+}
 
 // Large Turbo wurde ohne Übersetzungen trainiert und gibt dann oft nur die Originalsprache aus.
 function updateTranslateHint(fields) {
@@ -227,6 +338,7 @@ async function openFile(filePath) {
 
 function showWorkspace(name, info) {
   state.transcript = null;
+  state.transcribedWith = null;
   state.batch = null;
   parts.batch.hidden = true;
   parts.sendTo.hidden = Boolean(state.link);
@@ -235,6 +347,7 @@ function showWorkspace(name, info) {
   parts.start.disabled = !state.media;
   parts.drop.hidden = true;
   parts.linkCard.hidden = true;
+  parts.folderRow.hidden = true;
   parts.setup.hidden = true;
   parts.workspace.hidden = false;
   renderResult();
@@ -348,6 +461,7 @@ function buildBatch() {
 
 function showMedia(media) {
   state.link = null;
+  state.linkLoading = false;
   state.media = media;
   playLocal(media);
   const details = media.hasVideo ? `${media.width} × ${media.height}` : t('nur Ton');
@@ -419,10 +533,13 @@ async function loadLink() {
   state.link = info;
   startLinkPreview(info);
   const length = info.duration ? `${formatTime(info.duration)} · ` : '';
+  state.linkLoading = true;
   showWorkspace(info.title, `${length}${t('aus Link · Ton wird geladen …')}`);
 
   const response = await invoke('transcribe:fromLink', info.url);
   if (state.link !== info) return;
+  state.linkLoading = false;
+  renderWaiting();
   if (!response.ok) {
     parts.info.textContent = `${length}${t('aus Link')}`;
     setMessage(response.error ?? t('Abgebrochen. Füge den Link erneut ein, um es noch einmal zu versuchen.'));
@@ -440,6 +557,7 @@ function closeFile() {
   player.video.removeAttribute('poster');
   state.media = null;
   state.link = null;
+  state.linkLoading = false;
   state.previewing = false;
   state.transcript = null;
   setMessage('');
@@ -447,22 +565,90 @@ function closeFile() {
   refresh();
 }
 
+// Merkt sich, womit der Text entstand. Ändert sich danach nur die Sprecherwahl, muss Whisper nicht noch einmal laufen.
+const textOptions = (options) => `${options.language}|${options.model}|${options.translate}`;
+const speakerOption = (options) => (options.speakers ? String(options.speakerCount ?? 'auto') : '');
+
+function startMode() {
+  if (!state.transcript || !state.transcribedWith) return 'text';
+  const now = optionsFrom(parts.fields);
+  if (textOptions(now) !== textOptions(state.transcribedWith)) return 'text';
+  return speakerOption(now) !== speakerOption(state.transcribedWith) ? 'speakers' : 'same';
+}
+
+function updateStartLabel() {
+  if (state.running) return;
+  parts.start.textContent = !state.transcript
+    ? t('Transkribieren')
+    : startMode() === 'speakers' ? t('Sprecher neu erkennen') : t('Neu transkribieren');
+}
+
+function speakerChoiceChanged(value) {
+  parts.fields.speakers.value = value;
+  parts.linkSpeakers.value = value;
+  // "Nicht unterscheiden" braucht keine Rechnung, die Namen verschwinden einfach.
+  if (value === '' && !state.running && startMode() === 'speakers') {
+    state.transcript.segments.forEach((segment) => delete segment.speaker);
+    delete state.transcript.speakers;
+    delete state.transcript.speakerNames;
+    state.transcribedWith = optionsFrom(parts.fields);
+    renderResult();
+  }
+  updateStartLabel();
+}
+
+// Vorhandene Namen bleiben, solange es den Sprecher noch gibt.
+function withSpeakerNames(transcript, names = []) {
+  if (transcript.speakers) {
+    transcript.speakerNames = Array.from({ length: transcript.speakers }, (_value, index) => names[index] ?? t('Sprecher {number}', { number: index + 1 }));
+  }
+  return transcript;
+}
+
+function setRunning(running) {
+  state.running = running;
+  parts.start.disabled = running;
+  if (running) parts.start.textContent = t('Läuft …');
+  else updateStartLabel();
+  renderWaiting();
+}
+
 async function start() {
   setMessage('');
-  state.running = true;
-  parts.start.disabled = true;
-  parts.start.textContent = t('Läuft …');
+  if (startMode() === 'speakers') {
+    detectSpeakers();
+    return;
+  }
+  const options = optionsFrom(parts.fields);
+  setRunning(true);
   const filePath = state.media.path;
-  const response = await invoke('transcribe:start', { filePath, ...optionsFrom(parts.fields) });
-  state.running = false;
-  parts.start.disabled = false;
-  parts.start.textContent = t('Transkribieren');
+  const response = await invoke('transcribe:start', { filePath, ...options });
+  setRunning(false);
   if (state.media?.path !== filePath) return;
   if (!response.ok) {
     if (response.error) setMessage(response.error);
     return;
   }
-  state.transcript = response.transcript;
+  state.transcript = withSpeakerNames(response.transcript);
+  state.transcribedWith = options;
+  renderResult();
+}
+
+// Nur pyannote läuft noch einmal über den vorhandenen Text, das dauert Sekunden statt einer ganzen Transkription.
+async function detectSpeakers() {
+  const options = optionsFrom(parts.fields);
+  const previous = state.transcript;
+  const filePath = state.media.path;
+  setRunning(true);
+  const response = await invoke('transcribe:speakers', { filePath, transcript: previous, speakerCount: options.speakerCount });
+  setRunning(false);
+  if (state.media?.path !== filePath || state.transcript !== previous) return;
+  if (!response.ok) {
+    if (response.error) setMessage(response.error);
+    return;
+  }
+  state.transcript = withSpeakerNames(response.transcript, previous.speakerNames);
+  state.transcribedWith = options;
   renderResult();
 }
 
@@ -475,7 +661,57 @@ function summary(transcript) {
     : t('Sprache: {language}', { language });
   const segments = transcript.segments.length === 1 ? t('1 Abschnitt') : t('{count} Abschnitte', { count: transcript.segments.length });
   const wordCount = words === 1 ? t('1 Wort') : t('{count} Wörter', { count: words });
-  return `${segments} · ${wordCount} · ${spoken} · ${device}`;
+  const speakers = !transcript.speakers ? [] : [transcript.speakers === 1 ? t('1 Sprecher') : t('{count} Sprecher', { count: transcript.speakers })];
+  return [segments, wordCount, ...speakers, spoken, device].join(' · ');
+}
+
+const speakerColor = (index) => SPEAKER_COLORS[index % SPEAKER_COLORS.length];
+const speakerLabel = (index) => state.transcript.speakerNames[index]?.trim() || t('Sprecher {number}', { number: index + 1 });
+
+// Ein Klick gibt den Satz dem nächsten Sprecher, falls die Erkennung danebenlag.
+function speakerTag(segment) {
+  return el('button', {
+    class: 'speaker-tag',
+    title: t('Klicken, um den Satz einem anderen Sprecher zu geben'),
+    onclick: () => {
+      segment.speaker = (segment.speaker + 1) % state.transcript.speakers;
+      renderSpeakerTags();
+      requestCues();
+    },
+  });
+}
+
+// Wiederholt sich der Sprecher, tritt sein Name zurück, damit die Wechsel ins Auge fallen.
+function renderSpeakerTags() {
+  const { transcript } = state;
+  if (!transcript?.speakers) return;
+  rows.forEach((row, index) => {
+    const segment = transcript.segments[index];
+    const tag = row.querySelector('.speaker-tag');
+    tag.textContent = speakerLabel(segment.speaker);
+    tag.style.setProperty('--speaker', speakerColor(segment.speaker));
+    tag.classList.toggle('repeat', index > 0 && transcript.segments[index - 1].speaker === segment.speaker);
+  });
+}
+
+function renderSpeakerNames() {
+  const { transcript } = state;
+  parts.speakerNames.hidden = !transcript?.speakers;
+  if (!transcript?.speakers) return;
+  parts.speakerNames.replaceChildren(...transcript.speakerNames.map((name, index) => {
+    const input = el('input', {
+      class: 'input speaker-name',
+      value: name,
+      spellcheck: false,
+      'aria-label': t('Name für Sprecher {number}', { number: index + 1 }),
+      oninput: () => {
+        transcript.speakerNames[index] = input.value;
+        renderSpeakerTags();
+      },
+    });
+    input.style.setProperty('--speaker', speakerColor(index));
+    return input;
+  }));
 }
 
 function segmentRow(segment) {
@@ -501,7 +737,8 @@ function segmentRow(segment) {
       player.video.currentTime = segment.start;
     },
   }, formatTime(segment.start));
-  return el('div', { class: 'transcript-row' }, time, text);
+  if (!state.transcript.speakers) return el('div', { class: 'transcript-row' }, time, text);
+  return el('div', { class: 'transcript-row' }, time, el('div', { class: 'transcript-body' }, speakerTag(segment), text));
 }
 
 function renderResult() {
@@ -509,7 +746,12 @@ function renderResult() {
   parts.resultCards.forEach((card) => {
     card.hidden = !transcript;
   });
-  parts.start.textContent = transcript ? t('Neu transkribieren') : t('Transkribieren');
+  // Die Sprechernamen blenden sich selbst ein, wenn es Sprecher gibt.
+  parts.textParts.filter((part) => part !== parts.speakerNames).forEach((part) => {
+    part.hidden = !transcript;
+  });
+  renderWaiting();
+  updateStartLabel();
   rows = transcript?.segments.map(segmentRow) ?? [];
   if (transcript) parts.summary.textContent = summary(transcript);
   if (transcript?.segments.length === 0) {
@@ -517,8 +759,29 @@ function renderResult() {
   } else {
     parts.list.replaceChildren(...rows);
   }
+  renderSpeakerNames();
+  renderSpeakerTags();
   runSearch();
   renderBurn();
+}
+
+// Solange es keinen Text gibt: vorher ein Hinweis, währenddessen der Fortschritt aus der Warteschlange.
+// Fremde Aufträge, etwa ein Stapel, zählen nur, wenn diese Datei gerade selbst wartet.
+function renderWaiting() {
+  if (!parts.waiting) return;
+  parts.waiting.hidden = Boolean(state.transcript);
+  if (state.transcript) return;
+  const loadingLink = Boolean(state.linkLoading);
+  const busy = state.running || loadingLink;
+  const job = busy ? state.job : null;
+  parts.waitTitle.textContent = loadingLink ? t('Lädt den Ton …') : busy ? t('Transkribiert …') : t('Hier erscheint der Text');
+  const percent = job?.status === 'running' && job.progress !== null ? `${Math.round(job.progress)} %` : '';
+  parts.waitDetail.textContent = busy
+    ? [job?.status === 'queued' ? t('Wartet in der Warteschlange') : job?.detail, percent].filter(Boolean).join(' · ') || t('Startet …')
+    : t('Wähle links die Einstellungen und klicke auf „Transkribieren“. Danach kannst du den Text hier prüfen, verbessern und durchsuchen.');
+  parts.waitBar.hidden = !busy;
+  parts.waitFill.style.width = `${job?.progress ?? 0}%`;
+  parts.waiting.classList.toggle('busy', busy);
 }
 
 // Treffer werden über die Highlight-Schnittstelle markiert, der bearbeitbare Text bleibt unverändert.
@@ -805,6 +1068,7 @@ function buildPage(root) {
     setup: el('div', { class: 'stack' }),
     drop: createFileDrop({
       onFiles: openFiles,
+      allowAudio: true,
       title: t('Video oder Audio hierher ziehen'),
       hint: t('oder klicken, um auszuwählen. Mehrere Dateien werden nacheinander transkribiert.'),
       features: [
@@ -848,10 +1112,17 @@ function buildPage(root) {
     searchPrev: el('button', { class: 'button small', title: t('Vorheriger Treffer (Umschalt+Enter)'), 'aria-label': t('Vorheriger Treffer'), onclick: () => jumpToHit(-1) }, '↑'),
     searchNext: el('button', { class: 'button small', title: t('Nächster Treffer (Enter)'), 'aria-label': t('Nächster Treffer'), onclick: () => jumpToHit(1) }, '↓'),
     saved: el('div', { class: 'marker-row', hidden: true }),
+    speakerNames: el('div', { class: 'speaker-names', hidden: true }),
     subOverlay: el('div', { class: 'sub-overlay', hidden: true, 'aria-hidden': 'true' }),
     // Ton aus einem Link liegt nur vorübergehend im Temp-Ordner und wird nicht weitergegeben.
     sendTo: createSendTo({ getPath: () => (state.media && !state.media.fromLink ? state.media.path : null), exclude: 'transcribe' }),
   };
+
+  // Die Sprecherwahl gibt es zweimal: im Link-Feld, weil dort gleich losgelegt wird, und bei den Einstellungen.
+  parts.linkSpeakers = speakerSelect(() => speakerChoiceChanged(parts.linkSpeakers.value));
+  parts.linkSpeakerRow = el('label', { class: 'field', hidden: true }, el('span', { class: 'muted' }, t('Sprecher')), parts.linkSpeakers);
+  parts.fields.speakers.addEventListener('change', () => speakerChoiceChanged(parts.fields.speakers.value));
+  [parts.fields.language, parts.fields.model, parts.fields.output].forEach((field) => field.addEventListener('change', updateStartLabel));
 
   player.root.append(parts.subOverlay);
   player.video.addEventListener('error', previewFailed);
@@ -876,14 +1147,29 @@ function buildPage(root) {
     }, el('strong', {}, text), el('span', { class: 'muted' }, hint)))),
     parts.saved,
   );
-  const textCard = el('section', { class: 'card stack transcript-card', hidden: true },
-    el('h2', {}, t('Text')),
+  // Ohne Text steht hier, was passiert. So bleibt die rechte Spalte nie leer.
+  parts.waitTitle = el('strong', {});
+  parts.waitDetail = el('span', { class: 'muted' });
+  parts.waitFill = el('div', { class: 'progress-fill' });
+  parts.waitBar = el('div', { class: 'progress', role: 'progressbar', 'aria-label': t('Fortschritt') }, parts.waitFill);
+  parts.waiting = el('div', { class: 'transcript-waiting' },
+    parts.waitTitle,
+    parts.waitDetail,
+    parts.waitBar,
+    el('div', { class: 'transcript-skeleton', 'aria-hidden': 'true' }, ...[92, 78, 85, 64, 88, 70].map((width) => {
+      const line = el('span', {});
+      line.style.width = `${width}%`;
+      return line;
+    })));
+  parts.textParts = [
     parts.summary,
     el('p', { class: 'muted' }, t('Klick auf eine Zeit springt im Video dorthin. Den Text kannst du direkt verbessern, das wird beim Speichern übernommen.')),
+    parts.speakerNames,
     el('div', { class: 'search-row' }, parts.search, parts.searchCount, parts.searchPrev, parts.searchNext),
     parts.list,
-  );
-  parts.resultCards = [saveCard, textCard];
+  ];
+  const textCard = el('section', { class: 'card stack transcript-card' }, el('h2', {}, t('Text')), parts.waiting, ...parts.textParts);
+  parts.resultCards = [saveCard];
 
   parts.workspace.append(
     el('section', { class: 'card file-card' },
@@ -902,6 +1188,7 @@ function buildPage(root) {
     el('h2', {}, t('Per Link')),
     el('p', { class: 'muted' }, t('Es wird nur der Ton vorübergehend geladen, in deinen Downloads landet nichts.')),
     el('div', { class: 'url-row' }, parts.url, parts.loadLink),
+    parts.linkSpeakerRow,
   );
 
   parts.folderRow = el('div', { class: 'marker-row', hidden: true },
@@ -924,6 +1211,10 @@ function buildPage(root) {
 
   window.vitool.on('transcribe:statusChanged', refresh);
   window.vitool.on('queue:update', (jobs) => {
+    state.job = jobs.find((job) => job.kind === 'transcribe' && job.status === 'running')
+      ?? jobs.find((job) => job.kind === 'transcribe' && job.status === 'queued')
+      ?? null;
+    renderWaiting();
     const running = jobs.some((job) => job.kind === 'transcribe' && (job.status === 'running' || job.status === 'queued'));
     if (!running && state.wasRunning) refresh();
     state.wasRunning = running;

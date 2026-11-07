@@ -1,6 +1,7 @@
 // Bereich Einstellungen: Sprache, Standard-Download-Ordner und Infos zu Vitool.
 import { el, pageHeader } from '../utils/dom.js';
 import { t, LANGUAGE } from '../utils/i18n.js';
+import { THEMES, applyTheme } from '../utils/themes.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 const { languages } = window.vitool.i18n;
@@ -27,6 +28,33 @@ async function changeLanguage(language) {
   }
 }
 
+// Ein Theme wirkt sofort, ohne Neustart.
+async function chooseTheme(id) {
+  const theme = applyTheme(id);
+  parts.themes.forEach((tile) => {
+    const active = tile.dataset.theme === theme;
+    tile.classList.toggle('active', active);
+    tile.setAttribute('aria-pressed', String(active));
+  });
+  settings = await invoke('settings:set', { theme });
+}
+
+function themeTile(theme, current) {
+  const swatch = el('span', { class: 'theme-swatch' }, ...theme.colors.slice(1).map((color) => {
+    const dot = el('span', {});
+    dot.style.background = color;
+    return dot;
+  }));
+  swatch.style.background = theme.colors[0];
+  const tile = el('button', {
+    class: `theme-tile ${theme.id === current ? 'active' : ''}`,
+    'aria-pressed': String(theme.id === current),
+    onclick: () => chooseTheme(theme.id),
+  }, swatch, el('span', {}, theme.name));
+  tile.dataset.theme = theme.id;
+  return tile;
+}
+
 async function chooseFolder() {
   const folder = await invoke('dialog:pickFolder', settings.downloadDir);
   if (!folder) return;
@@ -46,15 +74,20 @@ function buildPage(root) {
     folder: el('span', { class: 'folder-path' }),
     version: el('span', { class: 'muted' }),
     dataFolder: el('span', { class: 'folder-path' }),
+    themes: THEMES.map((theme) => themeTile(theme, document.documentElement.dataset.theme)),
   };
 
   root.append(
-    pageHeader(t('Einstellungen'), t('Sprache, Speicherorte und Infos zu Vitool.')),
+    pageHeader(t('Einstellungen'), t('Sprache, Design, Speicherorte und Infos zu Vitool.')),
     el('section', { class: 'card stack' },
       el('h2', {}, t('Sprache')),
       el('label', { class: 'field' }, el('span', { class: 'muted' }, t('Oberfläche')), parts.language),
       el('p', { class: 'muted' }, t('Vitool startet nach dem Wechsel kurz neu, damit alle Texte in der neuen Sprache erscheinen.')),
       parts.notice,
+    ),
+    el('section', { class: 'card stack' },
+      el('h2', {}, t('Design')),
+      el('div', { class: 'theme-grid', role: 'group', 'aria-label': t('Farbschema') }, ...parts.themes),
     ),
     el('section', { class: 'card stack' },
       el('h2', {}, t('Downloads')),

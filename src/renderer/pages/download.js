@@ -441,7 +441,10 @@ function buildPage(root) {
 
   root.append(
     pageHeader('Download', t('Link einfügen, Qualität wählen, fertig.')),
-    el('section', { class: 'card' }, el('div', { class: 'url-row' }, parts.url, parts.load)),
+    el('section', { class: 'card stack' },
+      el('div', { class: 'url-row' }, parts.url, parts.load),
+      // Bewusst nur eine ruhige Zeile: ein Hinweis, keine Hürde.
+      el('p', { class: 'muted small-note' }, t('Lade nur Videos herunter, die du nutzen darfst, etwa eigene oder frei lizenzierte. Urheberrecht und die Regeln der jeweiligen Seite gelten weiter.'))),
     parts.message,
     parts.playlistNote,
     parts.result,
