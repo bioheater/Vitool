@@ -103,15 +103,14 @@ function confirmUninstall() {
 function installRequirements(status) {
   if (!status.checked) {
     return [
-      el('p', { class: 'muted' }, t('Grafikkarte und Python werden geprüft …')),
+      el('p', { class: 'muted' }, t('Grafikkarte wird geprüft …')),
       el('div', {}, el('button', { class: 'button primary', disabled: true }, t('KI-Paket installieren'))),
     ];
   }
+  // Python muss nicht installiert sein, Vitool richtet ein eigenes ein.
   return [
     el('p', { class: 'muted' }, status.gpu ? t('Grafikkarte erkannt: {name}', { name: status.gpu }) : t('Keine NVIDIA-Grafikkarte erkannt. Die KI läuft dann über den Prozessor und ist sehr langsam.')),
-    status.python
-      ? el('div', {}, el('button', { class: 'button primary', onclick: () => act('ai:install') }, t('KI-Paket installieren')))
-      : el('p', { class: 'message' }, t('Dafür wird Python 3.10 oder neuer gebraucht. Installiere es mit: winget install Python.Python.3.12')),
+    el('div', {}, el('button', { class: 'button primary', onclick: () => act('ai:install') }, t('KI-Paket installieren'))),
   ];
 }
 

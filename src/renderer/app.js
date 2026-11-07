@@ -57,6 +57,13 @@ pages.forEach((page) => {
 });
 
 window.vitool.on('app:openInCut', (filePath) => showPage('cut', { filePath }));
+
+// Wartet ein Update, bekommt "Einstellungen" einen Punkt. Gesucht wird im Hauptprozess kurz nach dem Start.
+const markUpdate = (status) => {
+  navButtons.get('settings').classList.toggle('has-update', ['available', 'downloading', 'ready'].includes(status.state));
+};
+window.vitool.on('update:status', markUpdate);
+window.vitool.invoke('update:status').then(markUpdate);
 setNavigator((id, data) => showPage(id, data));
 
 // Eine Datei, die neben einer Ablagefläche landet, soll nichts auslösen.

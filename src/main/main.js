@@ -1,10 +1,15 @@
 // Startpunkt der App: öffnet das Fenster und verbindet Oberfläche und Hintergrund.
 const path = require('path');
+const fs = require('fs/promises');
 const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
 
 const { Store } = require('./core/store');
 const { JobQueue } = require('./core/job-queue');
 const { ToolChecker } = require('./core/tools-check');
+const { installTools, updateYtDlp } = require('./core/tool-installer');
+const { setupUpdater } = require('./core/updater');
+const { CanceledError } = require('./core/process-runner');
+const { toGermanMessage } = require('./core/error-messages');
 const { listMediaFiles } = require('./core/files');
 const { t, currentLanguage, translations, LANGUAGES } = require('./core/i18n');
 
@@ -84,6 +89,7 @@ app.whenReady().then(() => {
   const tools = new ToolChecker();
 
   queue.on('change', (jobs) => send('queue:update', jobs));
+  setupUpdater({ ipcMain, send, queue });
 
   ipcMain.on('i18n:get', (event) => {
     // Das Farbschema kommt gleich mit, damit beim Start nichts im falschen Design aufblitzt.
@@ -103,7 +109,43 @@ app.whenReady().then(() => {
     app.exit(0);
   });
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), userData: app.getPath('userData') }));
+  // Beide Dateien liegen im Installer, so sind die Lizenzen auch ohne Internet einsehbar.
+  ipcMain.handle('app:licenses', async () => {
+    const read = (name) => fs.readFile(path.join(app.getAppPath(), name), 'utf8').catch(() => '');
+    return { notice: await read('LICENSE-NOTICE.md'), license: await read('LICENSE') };
+  });
   ipcMain.handle('tools:check', () => tools.check());
+  // Lädt, was fehlt, als Auftrag in der Warteschlange und wartet auf das Ende. Danach wird neu geprüft.
+  ipcMain.handle('tools:install', async (_event, missingIds) => {
+    try {
+      await new Promise((resolve, reject) => {
+        queue.add({
+          title: t('Programme für Vitool einrichten'),
+          kind: 'tools',
+          run: (job) => installTools(missingIds, job).then(() => {
+            resolve();
+            return null;
+          }, (error) => {
+            reject(error);
+            throw error;
+          }),
+        });
+      });
+      return { ok: true, ...(await tools.check()) };
+    } catch (error) {
+      if (error instanceof CanceledError) return { ok: false, canceled: true };
+      return { ok: false, error: toGermanMessage(error) };
+    }
+  });
+  ipcMain.handle('tools:updateYtDlp', async () => {
+    try {
+      const message = await updateYtDlp();
+      await tools.check();
+      return { ok: true, message };
+    } catch (error) {
+      return { ok: false, error: toGermanMessage(error) };
+    }
+  });
   ipcMain.handle('settings:get', () => store.get('settings'));
   ipcMain.handle('settings:set', (_event, patch) => {
     const settings = { ...store.get('settings'), ...patch };

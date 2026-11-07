@@ -9,7 +9,9 @@ const { app, BrowserWindow, dialog, shell } = require('electron');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
-const { exec, findPython, findGpu, folderSizeGb, downloadFile, pythonScript } = require('../core/python-tools');
+const {
+  exec, findGpu, folderSizeGb, downloadFile, pythonScript, createEnvironment, installPackages, uninstallPackages, cleanUvCache,
+} = require('../core/python-tools');
 const { moveFile, uniquePath } = require('../core/files');
 const { FORMATS } = require('./transcript-formats');
 const { STYLES, lookFor, cuesFor, toAss } = require('./subtitle-styles');
@@ -23,7 +25,7 @@ const HF_BASE = 'https://huggingface.co';
 const MODELS = [
   { id: 'small', repo: 'Systran/faster-whisper-small', label: 'Small', sizeMb: 464, text: t('Schnell, gut bei klarer Sprache') },
   { id: 'medium', repo: 'Systran/faster-whisper-medium', label: 'Medium', sizeMb: 1460, text: t('Genauer, deutlich langsamer') },
-  { id: 'turbo', repo: 'mobiuslabsgmbh/faster-whisper-large-v3-turbo', label: 'Large Turbo', sizeMb: 1547, text: t('Sehr genau und trotzdem schnell'), recommended: true },
+  { id: 'turbo', repo: 'dropbox-dash/faster-whisper-large-v3-turbo', label: 'Large Turbo', sizeMb: 1547, text: t('Sehr genau und trotzdem schnell'), recommended: true },
   { id: 'large', repo: 'Systran/faster-whisper-large-v3', label: 'Large', sizeMb: 2948, text: t('Am genauesten, am langsamsten') },
 ];
 // Sprechererkennung mit pyannote. Das Modell ist frei, Hugging Face verlangt aber einmal die Zustimmung zu den Bedingungen.
@@ -36,7 +38,7 @@ const TORCH_CUDA_INDEX = 'https://download.pytorch.org/whl/cu128';
 const TORCH_VERSION = '2.11.0';
 const SPEAKER_SIZE_MB = { gpu: 3500, cpu: 1100 };
 const INSTALL_SIZE_GB = 1.5;
-const INSTALL_SIZE_CPU_GB = 0.2;
+const INSTALL_SIZE_CPU_GB = 0.3;
 const SKIPPED_FILES = ['.gitattributes', 'README.md'];
 
 function register({ ipcMain, queue, store, tools, send }) {
@@ -63,18 +65,17 @@ function register({ ipcMain, queue, store, tools, send }) {
     return model;
   };
 
-  // Python, Grafikkarte und Ordnergröße brauchen Sekunden und werden im Hintergrund nachgereicht.
-  const slowInfo = { checked: false, python: null, gpu: null, usedGb: null };
+  // Grafikkarte und Ordnergröße brauchen Sekunden und werden im Hintergrund nachgereicht.
+  const slowInfo = { checked: false, gpu: null, usedGb: null };
   let slowCheck = null;
 
   function refreshSlowInfo() {
     slowCheck ??= (async () => {
-      const [python, gpu, usedGb] = await Promise.all([
-        findPython(),
+      const [gpu, usedGb] = await Promise.all([
         findGpu(),
         fsSync.existsSync(markerFile) ? folderSizeGb(root) : 0,
       ]);
-      Object.assign(slowInfo, { checked: true, python, gpu, usedGb: Number(usedGb.toFixed(1)) });
+      Object.assign(slowInfo, { checked: true, gpu, usedGb: Number(usedGb.toFixed(1)) });
       slowCheck = null;
       send('transcribe:statusChanged');
     })();
@@ -89,7 +90,6 @@ function register({ ipcMain, queue, store, tools, send }) {
     return {
       installed,
       checked: slowInfo.checked,
-      python: slowInfo.python,
       gpu: slowInfo.gpu,
       installSizeGb: slowInfo.gpu || !slowInfo.checked ? INSTALL_SIZE_GB : INSTALL_SIZE_CPU_GB,
       freeGb: Math.floor((disk.bavail * disk.bsize) / 1024 ** 3),
@@ -105,16 +105,15 @@ function register({ ipcMain, queue, store, tools, send }) {
   }
 
   // Erst die Pakete, dann das Modell. Scheitert nur das Modell am Zugang, geht der zweite Versuch schnell,
-  // weil pip die Pakete dann schon hat. Der Token wird nur für den Download gebraucht und nirgends gespeichert.
+  // weil uv die Pakete dann schon hat. Der Token wird nur für den Download gebraucht und nirgends gespeichert.
   async function runSpeakerInstall(token, job) {
     const hasNvidia = Boolean(await exec('nvidia-smi', ['-L']));
     // Alles in einem Aufruf mit fester Version: Sonst zieht ein Hilfspaket später ein neueres PyTorch ohne Grafikkarte nach.
     job.update({ detail: hasNvidia ? t('Lädt PyTorch für die Grafikkarte, das dauert einige Minuten') : t('Lädt PyTorch'), progress: 2 });
-    await run(envPython, [
-      '-m', 'pip', 'install', '--disable-pip-version-check',
-      `torch==${TORCH_VERSION}`, `torchaudio==${TORCH_VERSION}`, 'pyannote.audio',
-      ...(hasNvidia ? ['--extra-index-url', TORCH_CUDA_INDEX] : []),
-    ], { signal: job.signal });
+    await installPackages(envDir, [`torch==${TORCH_VERSION}`, `torchaudio==${TORCH_VERSION}`, 'pyannote.audio'], {
+      signal: job.signal,
+      extraIndexUrl: hasNvidia ? TORCH_CUDA_INDEX : null,
+    });
 
     job.update({ detail: t('Lädt das Modell zur Sprechererkennung'), progress: 90 });
     const partDir = `${speakerDir}.part`;
@@ -193,18 +192,17 @@ function register({ ipcMain, queue, store, tools, send }) {
     });
   }
 
+  // Python bringt uv selbst mit, auf dem Rechner muss keins installiert sein.
   async function runInstall(job) {
-    const python = await findPython();
-    if (!python) throw new UserError(t('Python wurde nicht gefunden.'));
     const hasNvidia = Boolean(await exec('nvidia-smi', ['-L']));
     // Für die Grafikkarte braucht faster-whisper die CUDA-Bibliotheken, die es als Python-Pakete gibt.
     const packages = ['faster-whisper', ...(hasNvidia ? ['nvidia-cublas-cu12', 'nvidia-cudnn-cu12==9.*'] : [])];
 
     await fs.mkdir(root, { recursive: true });
     job.update({ detail: t('Richtet Umgebung ein'), progress: 2 });
-    await run(python.path, ['-m', 'venv', envDir], { signal: job.signal });
+    await createEnvironment(envDir, { signal: job.signal });
     job.update({ detail: hasNvidia ? t('Lädt Whisper und Grafikkarten-Bibliotheken, das dauert einige Minuten') : t('Lädt Whisper'), progress: 10 });
-    await run(envPython, ['-m', 'pip', 'install', '--disable-pip-version-check', ...packages], { signal: job.signal });
+    await installPackages(envDir, packages, { signal: job.signal });
     await fs.writeFile(markerFile, new Date().toISOString(), 'utf8');
   }
 
@@ -437,7 +435,8 @@ function register({ ipcMain, queue, store, tools, send }) {
   // PyTorch belegt die meisten Gigabytes und geht mit. Kleinere Hilfspakete bleiben in der Umgebung.
   handle('transcribe:removeSpeakers', async () => {
     await fs.rm(speakerDir, { recursive: true, force: true });
-    await run(envPython, ['-m', 'pip', 'uninstall', '-y', 'pyannote.audio', 'torch', 'torchaudio', 'torchcodec']).catch(() => {});
+    await uninstallPackages(envDir, ['pyannote.audio', 'torch', 'torchaudio', 'torchcodec']).catch(() => {});
+    await cleanUvCache();
     refreshSlowInfo();
   });
 
@@ -458,6 +457,7 @@ function register({ ipcMain, queue, store, tools, send }) {
 
   handle('transcribe:uninstall', async () => {
     await fs.rm(root, { recursive: true, force: true });
+    await cleanUvCache();
     refreshSlowInfo();
   });
 

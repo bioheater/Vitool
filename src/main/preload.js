@@ -3,6 +3,13 @@ const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const INVOKE_CHANNELS = [
   'tools:check',
+  'tools:install',
+  'tools:updateYtDlp',
+  'update:status',
+  'update:check',
+  'update:download',
+  'update:install',
+  'update:openReleases',
   'settings:get',
   'settings:set',
   'dialog:pickFolder',
@@ -63,9 +70,10 @@ const INVOKE_CHANNELS = [
   'app:setLanguage',
   'app:restart',
   'app:info',
+  'app:licenses',
 ];
 
-const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged'];
+const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged', 'update:status'];
 
 contextBridge.exposeInMainWorld('vitool', {
   invoke(channel, ...args) {

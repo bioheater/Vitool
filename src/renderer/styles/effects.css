@@ -465,6 +465,105 @@ body {
   opacity: 0.85;
 }
 
+/* Lizenzfenster: breiter als andere Dialoge, der Text scrollt in sich. */
+.license-dialog {
+  background: var(--menu);
+  max-height: calc(100vh - 60px);
+  max-width: 760px;
+}
+
+.license-body {
+  display: grid;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.license-body h2 {
+  font-size: 18px;
+}
+
+.license-body h3 {
+  font-size: 15px;
+  margin-top: 8px;
+}
+
+.license-body h4 {
+  color: var(--muted);
+  font-size: 13.5px;
+  margin: 4px 0 0;
+}
+
+.license-list {
+  display: grid;
+  gap: 4px;
+  list-style: disc;
+  padding-left: 20px;
+}
+
+.license-table {
+  border-collapse: collapse;
+  font-size: 13px;
+  width: 100%;
+}
+
+.license-table th,
+.license-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.license-table th {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.license-text {
+  font: 12px/1.5 Consolas, 'Cascadia Mono', monospace;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.update-error {
+  color: var(--danger);
+}
+
+/* Punkt an "Einstellungen", solange ein Update wartet. */
+.nav-item.has-update {
+  position: relative;
+}
+
+.nav-item.has-update::after {
+  background: var(--accent);
+  border-radius: 50%;
+  content: '';
+  height: 8px;
+  left: 24px;
+  position: absolute;
+  top: 7px;
+  width: 8px;
+}
+
+.tool-setting strong {
+  min-width: 64px;
+}
+
+.tool-line {
+  display: grid;
+  gap: 1px;
+}
+
+.tool-manual summary {
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+.tool-manual .tool-list {
+  margin-top: 8px;
+}
+
 .small-note {
   font-size: 12.5px;
 }

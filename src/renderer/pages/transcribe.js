@@ -119,15 +119,14 @@ function confirmUninstall() {
 function installRequirements(status) {
   if (!status.checked) {
     return [
-      el('p', { class: 'muted' }, t('Grafikkarte und Python werden geprüft …')),
+      el('p', { class: 'muted' }, t('Grafikkarte wird geprüft …')),
       el('div', {}, el('button', { class: 'button primary', disabled: true }, t('Transkription installieren'))),
     ];
   }
+  // Python muss nicht installiert sein, Vitool richtet ein eigenes ein.
   return [
     el('p', { class: 'muted' }, status.gpu ? t('Grafikkarte erkannt: {name}', { name: status.gpu }) : t('Keine NVIDIA-Grafikkarte erkannt. Die Erkennung läuft dann über den Prozessor und dauert länger.')),
-    status.python
-      ? el('div', {}, el('button', { class: 'button primary', onclick: () => act('transcribe:install') }, t('Transkription installieren')))
-      : el('p', { class: 'message' }, t('Dafür wird Python 3.10 oder neuer gebraucht. Installiere es mit: winget install Python.Python.3.12')),
+    el('div', {}, el('button', { class: 'button primary', onclick: () => act('transcribe:install') }, t('Transkription installieren'))),
   ];
 }
 

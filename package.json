@@ -4,11 +4,13 @@
   "version": "0.1.0",
   "description": "All-in-One-Werkzeug für Videos: Herunterladen, Schneiden, Konvertieren, Bearbeiten",
   "author": "bioheater",
+  "license": "AGPL-3.0-only",
   "main": "src/main/main.js",
   "private": true,
   "scripts": {
     "start": "electron .",
-    "installer": "electron-builder --win nsis",
+    "installer": "electron-builder --win nsis --publish never",
+    "release": "electron-builder --win nsis --publish always",
     "postinstall": "node node_modules/electron/install.js"
   },
   "build": {
@@ -21,6 +23,8 @@
       "src/**/*",
       "assets/**/*",
       "package.json",
+      "LICENSE",
+      "LICENSE-NOTICE.md",
       "!**/__pycache__/**"
     ],
     "asarUnpack": [
@@ -37,17 +41,29 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Vitool",
-      "installerLanguages": ["de_DE"],
-      "language": "1031",
+      "installerLanguages": [
+        "en_US",
+        "de_DE"
+      ],
+      "displayLanguageSelector": false,
       "deleteAppDataOnUninstall": false,
       "artifactName": "Vitool-Setup-${version}.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "bioheater",
+        "repo": "Vitool",
+        "releaseType": "release"
+      }
+    ]
   },
   "devDependencies": {
     "electron": "^45.2.1",
     "electron-builder": "^26.18.0"
   },
   "dependencies": {
+    "electron-updater": "6.8.11",
     "hls.js": "^1.7.4"
   }
 }

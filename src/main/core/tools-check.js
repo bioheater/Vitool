@@ -1,9 +1,11 @@
-// Sucht beim Start nach yt-dlp, FFmpeg, ffprobe und Deno.
+// Sucht beim Start nach yt-dlp, FFmpeg, ffprobe und Deno. Die eigenen Kopien von Vitool im Datenordner
+// gehen vor, danach zählt, was über winget oder anders systemweit installiert ist.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { t } = require('./i18n');
+const { binFolder, DOWNLOADS } = require('./tool-installer');
 
 const TOOLS = [
   { id: 'ytdlp', exe: 'yt-dlp', label: 'yt-dlp', purpose: t('Lädt Videos herunter'), required: true, versionArg: '--version', install: 'winget install yt-dlp.yt-dlp' },
@@ -48,7 +50,14 @@ function findInWinget(exe, packagePrefix = '') {
   return walk(path.join(base, 'Packages'), 3, packagePrefix);
 }
 
+function ownCopy(exe) {
+  const file = path.join(binFolder(), `${exe}.exe`);
+  return fs.existsSync(file) ? file : null;
+}
+
 async function locate({ exe, packagePrefix }) {
+  const own = ownCopy(exe);
+  if (own) return own;
   if (packagePrefix) return findInWinget(exe, packagePrefix);
   const output = await exec('where.exe', [exe]);
   const fromPath = output?.split(/\r?\n/).find((line) => line.toLowerCase().endsWith('.exe'));
@@ -78,6 +87,8 @@ class ToolChecker {
           required: tool.required,
           install: tool.install,
           found,
+          source: found && toolPath.startsWith(binFolder()) ? 'vitool' : found ? 'system' : null,
+          download: DOWNLOADS.find((entry) => entry.provides.includes(tool.id))?.id ?? null,
           version: found ? output.split(/\r?\n/)[0] : null,
         };
       }),

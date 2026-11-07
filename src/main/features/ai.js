@@ -11,7 +11,7 @@ const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
-const { exec, findPython, findGpu, folderSizeGb, downloadFile, pythonScript } = require('../core/python-tools');
+const { exec, findGpu, folderSizeGb, downloadFile, pythonScript, createEnvironment, installPackages, cleanUvCache } = require('../core/python-tools');
 const { effectFilter, even } = require('./censor');
 const { t } = require('../core/i18n');
 
@@ -107,21 +107,19 @@ function register({ ipcMain, queue, store, tools, send }) {
     return model;
   };
 
-  // Python, Grafikkarte und Ordnergröße brauchen Sekunden. Sie werden im Hintergrund ermittelt,
+  // Grafikkarte und Ordnergröße brauchen Sekunden. Sie werden im Hintergrund ermittelt,
   // damit die Seite sofort erscheint, und danach als Ergänzung nachgeschickt.
-  const slowInfo = { checked: false, python: null, gpu: null, usedGb: null };
+  const slowInfo = { checked: false, gpu: null, usedGb: null };
   let slowCheck = null;
 
   function refreshSlowInfo() {
     slowCheck ??= (async () => {
-      const [python, gpu, usedGb] = await Promise.all([
-        findPython(),
+      const [gpu, usedGb] = await Promise.all([
         findGpu(),
         fsSync.existsSync(markerFile) ? folderSizeGb(root) : 0,
       ]);
       Object.assign(slowInfo, {
         checked: true,
-        python,
         gpu,
         usedGb: Number(usedGb.toFixed(1)),
       });
@@ -139,7 +137,6 @@ function register({ ipcMain, queue, store, tools, send }) {
     return {
       installed,
       checked: slowInfo.checked,
-      python: slowInfo.python,
       gpu: slowInfo.gpu,
       installSizeGb: INSTALL_SIZE_GB,
       freeGb: Math.floor((disk.bavail * disk.bsize) / 1024 ** 3),
@@ -150,25 +147,20 @@ function register({ ipcMain, queue, store, tools, send }) {
     };
   }
 
-  async function runPip(args, job, detail, progress) {
-    job.update({ detail, progress });
-    await run(envPython, ['-m', 'pip', 'install', '--disable-pip-version-check', ...args], {
-      signal: job.signal,
-      env: { SAM2_BUILD_CUDA: '0' },
-    });
-  }
-
+  // Python bringt uv selbst mit. SAM 2 wird ohne eigene CUDA-Erweiterung gebaut, die bräuchte ein Entwicklerpaket.
   async function runInstall(job) {
-    const python = await findPython();
-    if (!python) throw new UserError(t('Python wurde nicht gefunden.'));
     const hasNvidia = Boolean(await exec('nvidia-smi', ['-L']));
     const torchIndex = `https://download.pytorch.org/whl/${hasNvidia ? 'cu128' : 'cpu'}`;
 
     await fs.mkdir(root, { recursive: true });
     job.update({ detail: t('Richtet Umgebung ein'), progress: 2 });
-    await run(python.path, ['-m', 'venv', envDir], { signal: job.signal });
-    await runPip(['torch', 'torchvision', '--index-url', torchIndex], job, t('Lädt PyTorch, das dauert einige Minuten'), 10);
-    await runPip([SAM2_PACKAGE], job, t('Installiert SAM 2.1'), 80);
+    await createEnvironment(envDir, { signal: job.signal });
+    job.update({ detail: t('Lädt PyTorch, das dauert einige Minuten'), progress: 10 });
+    await installPackages(envDir, ['torch', 'torchvision'], { signal: job.signal, indexUrl: torchIndex });
+    job.update({ detail: t('Installiert SAM 2.1'), progress: 80 });
+    // SAM 2 wird gegen das eben installierte PyTorch gebaut, sonst lädt der Bau ein zweites PyTorch herunter.
+    await installPackages(envDir, ['setuptools', 'wheel'], { signal: job.signal });
+    await installPackages(envDir, [SAM2_PACKAGE], { signal: job.signal, env: { SAM2_BUILD_CUDA: '0' }, buildWithInstalled: true });
     await fs.writeFile(markerFile, new Date().toISOString(), 'utf8');
   }
 
@@ -385,6 +377,8 @@ function register({ ipcMain, queue, store, tools, send }) {
     stopWorker();
     await closeSession();
     await fs.rm(root, { recursive: true, force: true });
+    // Erst danach ist der Platz im Zwischenspeicher von uv wirklich frei.
+    await cleanUvCache();
     refreshSlowInfo();
   });
 

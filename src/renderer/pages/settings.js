@@ -2,6 +2,7 @@
 import { el, pageHeader } from '../utils/dom.js';
 import { t, LANGUAGE } from '../utils/i18n.js';
 import { THEMES, applyTheme } from '../utils/themes.js';
+import { showLicenses } from '../components/license-dialog.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 const { languages } = window.vitool.i18n;
@@ -63,8 +64,101 @@ async function chooseFolder() {
   parts.folder.title = folder;
 }
 
+// Kurz genug für eine Zeile: ohne Copyright-Hinweis und ohne Angaben in Klammern.
+const shortVersion = (version) => (version ?? '').replace(/\s+Copyright.*$/i, '').replace(/\s*\(.*\)$/, '').replace(/^ffmpeg version\s+/i, '');
+
+const SHOWN_TOOLS = ['ytdlp', 'ffmpeg', 'deno'];
+// Die letzte Meldung je Programm übersteht das Neuaufbauen der Liste.
+const toolMessages = {};
+
+// Eine eigene Kopie von Vitool lässt sich aktualisieren. Liegt ein Programm nur systemweit vor,
+// kann Vitool eine eigene Kopie laden, die danach Vorrang hat.
+function toolRow(tool) {
+  const source = tool.source === 'vitool' ? t('von Vitool eingerichtet') : tool.source === 'system' ? t('systemweit installiert') : t('fehlt');
+  const status = el('span', { class: 'muted' }, toolMessages[tool.id] ?? '');
+  const busy = (button, text) => {
+    button.disabled = true;
+    button.textContent = text;
+  };
+  let action = null;
+  if (tool.id === 'ytdlp' && tool.source === 'vitool') {
+    action = el('button', {
+      class: 'button small',
+      onclick: async () => {
+        busy(action, t('Sucht Update …'));
+        const response = await invoke('tools:updateYtDlp');
+        toolMessages[tool.id] = response.ok ? response.message : response.error;
+        renderTools();
+      },
+    }, t('Aktualisieren'));
+  } else if (tool.source !== 'vitool') {
+    action = el('button', {
+      class: 'button small',
+      title: tool.source === 'system' ? t('Vitool nutzt dann seine eigene Kopie, die es selbst aktuell halten kann.') : '',
+      onclick: async () => {
+        busy(action, t('Lädt …'));
+        const response = await invoke('tools:install', [tool.id]);
+        toolMessages[tool.id] = !response.ok && !response.canceled ? response.error : '';
+        renderTools();
+      },
+    }, tool.source === 'system' ? t('Eigene Kopie laden') : t('Einrichten'));
+  }
+  return el('div', { class: 'folder-row tool-setting' },
+    el('strong', {}, tool.label),
+    el('span', { class: 'folder-path', title: tool.version ?? '' }, tool.found ? shortVersion(tool.version) : '–'),
+    el('span', { class: 'muted' }, source),
+    status,
+    action);
+}
+
+// Je nach Stand ein Satz und der passende nächste Schritt. Installieren startet Vitool neu,
+// deshalb wird vorher gefragt, wenn noch Aufträge laufen.
+function renderUpdate(status) {
+  const button = (text, onclick, primary = false) => el('button', { class: `button small ${primary ? 'primary' : ''}`, onclick }, text);
+  const check = button(t('Nach Updates suchen'), () => invoke('update:check'));
+  const notes = button(t('Was ist neu?'), () => invoke('update:openReleases'));
+  const install = async () => {
+    let response = await invoke('update:install', false);
+    if (response.busy && window.confirm(t('Es laufen noch Aufträge. Beim Neustart werden sie abgebrochen. Trotzdem jetzt aktualisieren?'))) {
+      response = await invoke('update:install', true);
+    }
+  };
+  const views = {
+    dev: [t('Updates gibt es nur in der installierten Fassung von Vitool.')],
+    idle: [t('Neue Versionen kommen über GitHub.'), check],
+    none: [t('Vitool ist auf dem neuesten Stand.'), check],
+    error: [status.error, check],
+    checking: [t('Sucht nach Updates …')],
+    available: [t('Version {version} ist verfügbar.', { version: status.version }), notes, button(t('Herunterladen'), () => invoke('update:download'), true)],
+    downloading: [t('Lädt Version {version} … {percent} %', { version: status.version, percent: Math.round(status.progress ?? 0) })],
+    ready: [t('Version {version} ist bereit.', { version: status.version }), notes, button(t('Neu starten und aktualisieren'), install, true)],
+  };
+  const [text, ...actions] = views[status.state] ?? views.idle;
+  let bar = null;
+  if (status.state === 'downloading') {
+    const fill = el('div', { class: 'progress-fill' });
+    fill.style.width = `${status.progress ?? 0}%`;
+    bar = el('div', { class: 'progress update-progress' }, fill);
+  }
+  parts.update.replaceChildren(
+    el('div', { class: 'folder-row' }, el('span', { class: status.state === 'error' ? 'update-error' : 'muted' }, text), ...actions),
+    ...(bar ? [bar] : []),
+  );
+}
+
+async function renderTools() {
+  const { tools } = await invoke('tools:check');
+  parts.tools.replaceChildren(...tools.filter((tool) => SHOWN_TOOLS.includes(tool.id)).map(toolRow));
+}
+
 function buildPage(root) {
+  window.vitool.on('update:status', (status) => {
+    if (parts.update) renderUpdate(status);
+  });
   parts = {
+    tools: el('div', { class: 'stack' }),
+    update: el('div', { class: 'stack' }),
+    licenseRoot: el('div', {}),
     language: el('select', {
       class: 'input',
       'aria-label': t('Sprache'),
@@ -77,6 +171,8 @@ function buildPage(root) {
     themes: THEMES.map((theme) => themeTile(theme, document.documentElement.dataset.theme)),
   };
 
+  // Das Lizenzfenster liegt über allem, deshalb direkt im Dokument und nicht in der Seite.
+  document.body.append(parts.licenseRoot);
   root.append(
     pageHeader(t('Einstellungen'), t('Sprache, Design, Speicherorte und Infos zu Vitool.')),
     el('section', { class: 'card stack' },
@@ -98,8 +194,18 @@ function buildPage(root) {
       el('p', { class: 'muted' }, t('Hierhin speichert Vitool Downloads und Ergebnisse aus Links.')),
     ),
     el('section', { class: 'card stack' },
+      el('h2', {}, t('Programme')),
+      parts.tools,
+      el('p', { class: 'muted' }, t('Wenn Downloads plötzlich scheitern, hilft meist ein Update von yt-dlp: Die Seiten ändern sich oft.')),
+    ),
+    el('section', { class: 'card stack' },
       el('h2', {}, t('Über Vitool')),
       el('div', { class: 'folder-row' }, el('span', { class: 'muted' }, t('Version')), parts.version),
+      parts.update,
+      el('div', { class: 'folder-row' },
+        el('span', { class: 'muted' }, t('Lizenz')),
+        el('span', {}, t('AGPL-3.0, freie Software')),
+        el('button', { class: 'button small', onclick: () => showLicenses(parts.licenseRoot) }, t('Lizenzen anzeigen'))),
       el('div', { class: 'folder-row' },
         el('span', { class: 'muted' }, t('Datenordner')),
         parts.dataFolder,
@@ -122,5 +228,7 @@ export default {
     parts.version.textContent = info.version;
     parts.dataFolder.textContent = info.userData;
     parts.dataFolder.title = info.userData;
+    renderTools();
+    renderUpdate(await invoke('update:status'));
   },
 };
