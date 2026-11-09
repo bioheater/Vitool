@@ -5,6 +5,15 @@ const fsSync = require('fs');
 const crypto = require('crypto');
 const { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } = require('electron');
 
+// Die Entwicklungsversion (npm start) läuft getrennt von einer installierten Vitool: eigene Daten,
+// eigener Eintrag in der Taskleiste und ein Symbol mit DEV-Schild. Das muss vor allem anderen
+// passieren, weil schon beim Laden der Module Einstellungen gelesen werden.
+const IS_DEV = !app.isPackaged;
+const APP_NAME = IS_DEV ? 'Vitool Dev' : 'Vitool';
+const ICON_NAME = IS_DEV ? 'icon-dev' : 'icon';
+// Ohne Leerzeichen im Ordnernamen, sonst lädt Windows das Taskleistensymbol aus diesem Ordner nicht.
+if (IS_DEV) app.setPath('userData', path.join(app.getPath('appData'), 'Vitool-Dev'));
+
 const { Store } = require('./core/store');
 const { JobQueue } = require('./core/job-queue');
 const { ToolChecker } = require('./core/tools-check');
@@ -45,7 +54,7 @@ function glassOn(value) {
 // Windows merkt sich Taskleistensymbole nach ihrem Pfad und liest eine geänderte Datei nicht neu ein.
 // Deshalb bekommt es eine Kopie, deren Name sich mit dem Inhalt ändert. Ein neues Logo erscheint so sofort.
 function taskbarIcon() {
-  const source = path.join(__dirname, '..', '..', 'assets', 'icon.ico');
+  const source = path.join(__dirname, '..', '..', 'assets', `${ICON_NAME}.ico`);
   try {
     const content = fsSync.readFileSync(source);
     const hash = crypto.createHash('sha1').update(content).digest('hex').slice(0, 10);
@@ -71,7 +80,7 @@ function updatePinnedShortcut(icon) {
   if (!fsSync.existsSync(folder)) return;
   for (const entry of fsSync.readdirSync(folder, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const link = path.join(folder, entry.name, 'Vitool.lnk');
+    const link = path.join(folder, entry.name, `${APP_NAME}.lnk`);
     if (!fsSync.existsSync(link)) continue;
     try {
       const shortcut = shell.readShortcutLink(link);
@@ -90,8 +99,8 @@ function createWindow() {
     minWidth: 980,
     minHeight: 640,
     backgroundColor: '#101216',
-    title: 'Vitool',
-    icon: path.join(__dirname, '..', '..', 'assets', 'icon.png'),
+    title: APP_NAME,
+    icon: path.join(__dirname, '..', '..', 'assets', `${ICON_NAME}.png`),
     autoHideMenuBar: true,
     // Die Titelleiste zeichnet Vitool selbst in der Farbe der Seitenleiste. Windows liefert nur
     // die drei Fensterknöpfe, deren Farben die Oberfläche passend zum Theme setzt.
@@ -106,6 +115,8 @@ function createWindow() {
   });
 
   win.setMenuBarVisibility(false);
+  // Sonst übernimmt das Fenster den Titel der Seite, und die Entwicklungsversion hieße wieder nur Vitool.
+  win.on('page-title-updated', (event) => event.preventDefault());
   // Ohne Installer läuft Vitool über electron.exe. Damit Anheften an die Taskleiste trotzdem
   // Vitool mit eigenem Symbol startet, bekommt Windows Startbefehl, Name und Symbol mitgeteilt.
   if (process.platform === 'win32' && !app.isPackaged) {
@@ -114,7 +125,7 @@ function createWindow() {
       appIconPath: taskbarIcon(),
       appIconIndex: 0,
       relaunchCommand: `"${process.execPath}" "${app.getAppPath()}"`,
-      relaunchDisplayName: 'Vitool',
+      relaunchDisplayName: APP_NAME,
     });
   }
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -128,7 +139,7 @@ function send(channel, data) {
 
 // Damit Windows Vitool in der Taskleiste als eigenes Programm mit eigenem Symbol führt.
 // Muss zur appId des Installers passen, sonst gehören Verknüpfung und Fenster nicht zusammen.
-const APP_ID = 'de.vitool.app';
+const APP_ID = IS_DEV ? 'de.vitool.app.dev' : 'de.vitool.app';
 app.setAppUserModelId(APP_ID);
 
 app.whenReady().then(() => {

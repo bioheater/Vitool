@@ -22,6 +22,7 @@
     "files": [
       "src/**/*",
       "assets/**/*",
+      "!assets/icon-dev.*",
       "package.json",
       "LICENSE",
       "LICENSE-NOTICE.md",
