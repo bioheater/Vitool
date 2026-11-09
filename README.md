@@ -17,7 +17,7 @@
   <a href="#license">License</a>
 </p>
 
-![Vitool tools overview](docs/screenshots/tools.png)
+![Vitool in 30 seconds: download, cut, censor, AI mask, transcribe and color themes](docs/screenshots/demo.gif)
 
 ## Features
 
