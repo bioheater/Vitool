@@ -189,7 +189,7 @@ export class SectionEditor {
       el('li', { class: `section-row ${index === this.active ? 'active' : ''}` },
         el('span', { class: 'section-name' }, t('Abschnitt {number}', { number: index + 1 })),
         this.timeInput(index, 'start', 'Start'),
-        el('span', { class: 'muted' }, 'bis'),
+        el('span', { class: 'muted' }, t('bis')),
         this.timeInput(index, 'end', t('Ende')),
         el('span', { class: 'muted section-length' }, formatTime(range.end - range.start, true)),
         this.ranges.length > 1

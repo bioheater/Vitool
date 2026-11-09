@@ -141,7 +141,7 @@ function buildPage(root) {
       el('div', { class: 'marker-row' },
         el('button', { class: 'button', onclick: () => editor.setEdge('start', video.currentTime) }, t('Start hier setzen')),
         el('button', { class: 'button', onclick: () => editor.setEdge('end', video.currentTime) }, t('Ende hier setzen')),
-        el('span', { class: 'muted' }, 'Tasten: I = Start, O = Ende, Leertaste = Abspielen, ← → = Einzelbild'),
+        el('span', { class: 'muted' }, t('Tasten: I = Start, O = Ende, Leertaste = Abspielen, ← → = Einzelbild')),
       ),
       editor.root,
     ),

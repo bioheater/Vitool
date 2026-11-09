@@ -592,7 +592,7 @@ function buildPage(root) {
   );
   const sectionHint = el('p', { class: 'muted' }, t('Freistellen speichert nur den Abschnitt als transparente WebM-Datei, die anderen Effekte das ganze Video.'));
   parts.exportCard.append(
-    el('h2', {}, '3. Ergebnis'),
+    el('h2', {}, t('3. Ergebnis')),
     el('div', { class: 'marker-row' },
       el('span', { class: 'muted' }, t('Ansicht')),
       choice(t('Ansicht'), [{ value: 'effect', text: t('Effekt') }, { value: 'mask', text: t('Maske') }], state.view, (value) => {
