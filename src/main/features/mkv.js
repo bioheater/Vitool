@@ -22,9 +22,9 @@ const MAX_OFFSET = 3600;
 const LOSSLESS = /^(flac|truehd|mlp|alac|pcm_)/;
 const previewDir = path.join(os.tmpdir(), `vitool-abgleich-${process.pid}`);
 
-// Eine Spur mit anderem Tempo muss neu kodiert werden. Verlustfreie Spuren bleiben verlustfrei,
+// Eine Spur mit anderem Tempo oder anderer Lautstärke muss neu kodiert werden. Verlustfreie Spuren bleiben verlustfrei,
 // Kino-Formate werden AC3, alles andere AAC. Die Bitrate orientiert sich an der Quelle.
-function retimeEncoder({ codec, channels, bitRate }) {
+function audioEncoder({ codec, channels, bitRate }) {
   const kbit = bitRate ? Math.round(bitRate / 1000) : null;
   if (LOSSLESS.test(codec) || channels > 6) return { args: ['-c:a', 'flac'], label: 'FLAC' };
   if (/^(ac3|eac3|dts)/.test(codec)) {
@@ -53,6 +53,32 @@ function isRetimed(track) {
   return track.type === 'audio' && Math.abs((track.stretch ?? 1) - 1) > 1e-6;
 }
 
+function hasGain(track) {
+  return track.type === 'audio' && Math.abs(track.gain ?? 0) >= 0.05;
+}
+
+// Alle Tonfilter einer Spur in der Reihenfolge Tempo, Lautstärke, Begrenzer. Wird lauter gemacht,
+// fängt der Begrenzer die Spitzen bei −2 dB ab, mit Abstand zum Maximum, statt sie hart abzuschneiden.
+// "level=0" schaltet seine eigene Pegelautomatik ab, "latency=1" gleicht seine Verzögerung aus.
+function audioFilters(track, stretch = track.stretch ?? 1) {
+  const filters = [];
+  if (Math.abs(stretch - 1) > 1e-6 && track.sampleRate) filters.push(retimeFilter(track.sampleRate, stretch));
+  if (hasGain(track)) {
+    filters.push(`volume=${track.gain}dB`);
+    if (track.gain > 0) filters.push('alimiter=limit=0.794:level=0:latency=1');
+  }
+  return filters;
+}
+
+// Integrierte Lautheit (LUFS) und echte Spitze (dBTP) nach EBU R128, aus der Zusammenfassung von ebur128.
+function parseLoudness(text) {
+  const summary = text.slice(text.lastIndexOf('Summary:'));
+  const integrated = /I:\s*(-?[\d.]+|-inf)\s*LUFS/.exec(summary);
+  const peak = /Peak:\s*(-?[\d.]+|-inf)\s*dBFS/.exec(summary);
+  const value = (match) => (match && match[1] !== '-inf' ? Number(match[1]) : null);
+  return { loudness: value(integrated), peak: value(peak) };
+}
+
 // Matroska speichert die Länge einer Spur als Text, etwa "01:52:03.456000000".
 function streamDuration(stream, fallback) {
   const direct = Number(stream.duration);
@@ -76,8 +102,9 @@ function toTrack(stream, source, fileDuration) {
     channels: stream.channels ?? null,
     bitRate,
     stretch: 1,
-    retimeLabel: stream.codec_type === 'audio'
-      ? retimeEncoder({ codec: stream.codec_name ?? '', channels: stream.channels, bitRate }).label
+    gain: 0,
+    encodeLabel: stream.codec_type === 'audio'
+      ? audioEncoder({ codec: stream.codec_name ?? '', channels: stream.channels, bitRate }).label
       : null,
     source,
     index: stream.index,
@@ -129,19 +156,20 @@ function register({ ipcMain, queue, tools, send }) {
   async function shiftTracks(options, kept, tempDir, job) {
     const inputs = options.files.flatMap((file) => ['-i', file]);
     let next = options.files.length;
-    for (const track of kept.filter((entry) => entry.offset || isRetimed(entry))) {
+    for (const track of kept.filter((entry) => entry.offset || isRetimed(entry) || hasGain(entry))) {
       const retimed = isRetimed(track);
-      job.update({
-        detail: retimed ? t('Passt Tempo von Spur {number} an', { number: track.index + 1 }) : t('Verschiebt Spur {number}', { number: track.index + 1 }),
-        progress: retimed ? 0 : null,
-      });
+      const encoded = retimed || hasGain(track);
+      let detail = t('Verschiebt Spur {number}', { number: track.index + 1 });
+      if (retimed) detail = t('Passt Tempo von Spur {number} an', { number: track.index + 1 });
+      else if (encoded) detail = t('Ändert Lautstärke von Spur {number}', { number: track.index + 1 });
+      job.update({ detail, progress: encoded ? 0 : null });
       const file = path.join(tempDir, `spur-${next}.mkv`);
       const cut = track.offset < 0 ? ['-ss', String(-track.offset)] : [];
       let codec = track.codec === 'mov_text' ? ['-c', 'srt'] : ['-c', 'copy'];
-      if (retimed) codec = ['-af', retimeFilter(track.sampleRate, track.stretch), ...retimeEncoder(track).args];
+      if (encoded) codec = ['-af', audioFilters(track).join(','), ...audioEncoder(track).args];
       await runFfmpeg(tools.path('ffmpeg'), ['-i', options.files[track.source], '-map', `0:${track.index}`, ...codec, ...cut, file], {
         signal: job.signal,
-        duration: retimed ? (track.duration ?? 0) * track.stretch : 0,
+        duration: encoded ? (track.duration ?? 0) * track.stretch : 0,
         onProgress: (part) => job.update({ progress: part * 100 }),
       });
       inputs.push(...(track.offset > 0 ? ['-itsoffset', String(track.offset)] : []), '-i', file);
@@ -184,6 +212,8 @@ function register({ ipcMain, queue, tools, send }) {
       track.offset = track.type === 'video' ? 0 : Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, offset));
       const stretch = Number(track.stretch) || 1;
       track.stretch = track.type === 'audio' && track.sampleRate && stretch > 0.8 && stretch < 1.25 ? stretch : 1;
+      const gain = Math.round((Number(track.gain) || 0) * 10) / 10;
+      track.gain = track.type === 'audio' ? Math.max(-30, Math.min(30, gain)) : 0;
     });
     if (!options.folder) return { ok: false, error: t('Bitte wähle einen Zielordner.') };
     queue.add({
@@ -242,6 +272,28 @@ function register({ ipcMain, queue, tools, send }) {
     }
   });
 
+  // Misst eine ganze Spur. Das Ergebnis bleibt gespeichert, damit ein zweiter Vergleich sofort geht.
+  const loudnessCache = new Map();
+  ipcMain.handle('mkv:loudness', async (_event, { file, index, duration }) => {
+    const key = `${file}|${index}`;
+    try {
+      if (!loudnessCache.has(key)) {
+        const { stderr } = await runFfmpeg(tools.path('ffmpeg'), [
+          '-i', file, '-map', `0:${index}`, '-af', 'ebur128=peak=true:framelog=verbose', '-f', 'null', '-',
+        ], {
+          duration,
+          onProgress: (part) => send('mkv:loudnessProgress', { file, index, part }),
+        });
+        const result = parseLoudness(stderr);
+        if (result.loudness === null) throw new UserError(t('In dieser Spur ist nur Stille.'));
+        loudnessCache.set(key, result);
+      }
+      return { ok: true, ...loudnessCache.get(key) };
+    } catch (error) {
+      return { ok: false, error: toGermanMessage(error) };
+    }
+  });
+
   // Kurzer Probeclip: Bild aus dem Video, Ton aus der Spur mit Versatz und Tempo wie beim Speichern.
   ipcMain.handle('mkv:syncPreview', async (_event, { video, track, start, length }) => {
     try {
@@ -256,7 +308,7 @@ function register({ ipcMain, queue, tools, send }) {
         seek = 0;
       }
       const filters = [
-        ...(Math.abs(stretch - 1) > 1e-6 && track.sampleRate ? [retimeFilter(track.sampleRate, stretch)] : []),
+        ...audioFilters({ type: 'audio', ...track, gain: Number(track.gain) || 0 }, stretch),
         ...(delay > 0 ? [`adelay=${Math.round(delay * 1000)}:all=1`] : []),
       ];
       await runFfmpeg(tools.path('ffmpeg'), [
@@ -288,4 +340,4 @@ function dispose() {
   fsSync.rmSync(previewDir, { recursive: true, force: true });
 }
 
-module.exports = { register, dispose, retimeFilter, retimeEncoder };
+module.exports = { register, dispose, retimeFilter, audioEncoder, audioFilters, parseLoudness };

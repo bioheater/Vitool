@@ -4,6 +4,7 @@ import { folderOf } from '../utils/path.js';
 import { createFileDrop } from '../components/file-drop.js';
 import { createSendTo } from '../components/send-to.js';
 import { SyncPanel } from '../components/sync-panel.js';
+import { VolumePanel, formatGain } from '../components/volume-panel.js';
 import { t, LANGUAGE } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
@@ -24,6 +25,7 @@ const FEATURES = [
 const state = { files: [], tracks: [], folder: null };
 let parts = {};
 let syncPanel = null;
+let volumePanel = null;
 
 function setMessage(text) {
   parts.message.textContent = text;
@@ -118,6 +120,20 @@ function syncButton(track) {
   }, t('Angleichen'));
 }
 
+function volumeButton(track) {
+  if (track.type !== 'audio') return null;
+  const active = volumePanel.isOpenFor(track);
+  return el('button', {
+    class: `button small ${active ? 'active' : ''}`,
+    'aria-pressed': String(active),
+    title: t('Lautstärke messen, angleichen oder von Hand ändern'),
+    onclick: () => {
+      volumePanel.open(track);
+      renderTracks();
+    },
+  }, t('Lautstärke'));
+}
+
 function trackRow(track) {
   const fromMain = track.source === 0;
   const keep = el('input', {
@@ -139,6 +155,7 @@ function trackRow(track) {
         track.info,
         fromMain ? '' : t('Neu'),
         Math.abs((track.stretch ?? 1) - 1) > 1e-6 ? t('Tempo angepasst') : '',
+        Math.abs(track.gain ?? 0) >= 0.05 ? formatGain(track.gain) : '',
       ].filter(Boolean).join(' · ') || ' ')),
     languageSelect(track),
     el('input', {
@@ -152,6 +169,7 @@ function trackRow(track) {
     }),
     offsetField(track),
     syncButton(track),
+    volumeButton(track),
     flagToggle(t('Standard'), track.isDefault, () => toggleDefault(track)),
     flagToggle(t('Erzwungen'), track.forced, () => {
       track.forced = !track.forced;
@@ -168,6 +186,7 @@ function renderTracks() {
   const kept = state.tracks.filter((track) => track.keep).length;
   parts.count.textContent = t('{kept} von {total} Spuren werden behalten', { kept, total: state.tracks.length });
   syncPanel.refresh();
+  volumePanel.refresh();
 }
 
 async function openFile(filePath) {
@@ -179,6 +198,7 @@ async function openFile(filePath) {
   }
 
   syncPanel.close();
+  volumePanel.close();
   state.files = [filePath];
   state.tracks = response.tracks;
   state.folder = folderOf(filePath);
@@ -218,6 +238,7 @@ function removeSource(source) {
 
 function closeFile() {
   syncPanel.close();
+  volumePanel.close();
   state.files = [];
   state.tracks = [];
   setMessage('');
@@ -265,6 +286,11 @@ function buildPage(root) {
     getTracks: () => state.tracks,
     onChange: renderTracks,
   });
+  volumePanel = new VolumePanel({
+    getFiles: () => state.files,
+    getTracks: () => state.tracks,
+    onChange: renderTracks,
+  });
 
   parts.workspace.append(
     el('section', { class: 'card file-card' },
@@ -286,8 +312,9 @@ function buildPage(root) {
       }),
     ),
     syncPanel.root,
+    volumePanel.root,
     el('section', { class: 'card stack' },
-      el('p', { class: 'muted' }, t('Das Ergebnis ist eine MKV-Datei. Es wird nichts neu kodiert, die Qualität bleibt gleich und es dauert meist nur Sekunden. Kapitel bleiben erhalten.')),
+      el('p', { class: 'muted' }, t('Das Ergebnis ist eine MKV-Datei. Es wird nichts neu kodiert, außer Tonspuren mit geänderter Lautstärke oder angepasstem Tempo. Die Qualität bleibt gleich und es dauert meist nur Sekunden. Kapitel bleiben erhalten.')),
       el('div', { class: 'folder-row' },
         el('span', { class: 'muted' }, t('Zielordner')),
         parts.folder,

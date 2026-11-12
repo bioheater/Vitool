@@ -441,7 +441,7 @@ export class SyncPanel {
       kind ? el('p', {}, tempoText(kind, stretch)) : el('p', {}, t('Für diese Spur ist eine Tempoanpassung eingestellt.')),
       el('label', { class: 'check' }, input,
         el('span', {}, t('Tempo anpassen'),
-          el('small', { class: 'muted' }, t('Die Spur wird dafür neu kodiert ({codec}). Länge und Tonhöhe passen danach zum Video.', { codec: this.track.retimeLabel ?? 'AAC' })))),
+          el('small', { class: 'muted' }, t('Die Spur wird dafür neu kodiert ({codec}). Länge und Tonhöhe passen danach zum Video.', { codec: this.track.encodeLabel ?? 'AAC' })))),
     );
     this.tempoBox.hidden = false;
   }
@@ -464,6 +464,7 @@ export class SyncPanel {
         offset: this.track.offset,
         stretch: this.track.stretch ?? 1,
         sampleRate: this.track.sampleRate,
+        gain: this.track.gain ?? 0,
       },
       start: this.position,
       length: PREVIEW_SECONDS,
