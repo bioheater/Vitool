@@ -6,6 +6,7 @@ class UserError extends Error {}
 
 const RULES = [
   [/unsupported url|is not a valid url|no suitable extractor/i, t('Dieser Link wird nicht unterstützt. Prüfe bitte, ob er vollständig ist.')],
+  [/drm.protected|is drm|widevine|playready/i, t('Dieses Video ist kopiergeschützt (DRM). Solche Videos kann Vitool nicht laden.')],
   [/not a bot|cookies.*authentication|use --cookies/i, t('Die Seite verlangt eine Anmeldung oder hält den Zugriff für automatisiert. Versuche es später noch einmal.')],
   [/confirm your age|age.?restricted|inappropriate for some users/i, t('Dieses Video hat eine Altersbeschränkung und lässt sich ohne Anmeldung nicht laden.')],
   [/private video|this video is private/i, t('Dieses Video ist privat und kann nicht geladen werden.')],

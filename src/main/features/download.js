@@ -3,12 +3,13 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { randomUUID } = require('crypto');
-const { session } = require('electron');
+const { BrowserWindow, session } = require('electron');
 const { run } = require('../core/process-runner');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { concatFiles } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
 const { t } = require('../core/i18n');
+const { createPageFinder } = require('./page-finder');
 
 const FILE_MARKER = 'VITOOLFILE|';
 const PROGRESS_MARKER = 'VITOOLPROGRESS|';
@@ -27,6 +28,11 @@ function commonArgs(tools) {
   const args = ['--no-playlist', '--encoding', 'utf-8'];
   if (tools.path('deno')) args.push('--js-runtimes', `deno:${tools.path('deno')}`);
   return args;
+}
+
+// Herkunft, Browserkennung und Cookies, die eine gefundene Seite für ihren Stream verlangt.
+function headerArgs(headers) {
+  return Object.entries(headers ?? {}).flatMap(([name, value]) => ['--add-header', `${name}:${value}`]);
 }
 
 // Bevorzugt eine direkte MP4-Datei. Viele Seiten liefern aber nur Streams aus Einzelstücken (HLS).
@@ -49,7 +55,9 @@ function normalizeInfo(raw, url) {
   const playlist = raw._type === 'playlist' ? 'only' : /[?&]list=/.test(url) ? 'member' : null;
   if (!info) {
     if (playlist) return { url, title: raw.title ?? t('Playlist'), playlist: 'only', heights: [] };
-    throw new UserError(t('Unter diesem Link wurde kein Video gefunden.'));
+    const error = new UserError(t('Unter diesem Link wurde kein Video gefunden.'));
+    error.noVideo = true;
+    throw error;
   }
 
   const formats = info.formats ?? [];
@@ -115,14 +123,17 @@ function safeFolderName(name) {
 }
 
 function buildArgs(options, tools, tempDir) {
-  const { url, mode, height, sections, exact } = options;
+  const { url, mode, height, sections, exact, headers } = options;
   const hasSections = sections.length > 0;
+  // Ein auf der Seite gefundener Stream heißt meist nur "master", der Titel kommt dann von der Seite.
+  const title = options.pageUrl && options.title ? safeFolderName(options.title).replace(/%/g, '%%') : '%(title).120B';
   const name = hasSections
-    ? '%(title).120B [%(section_start).1f-%(section_end).1f].%(ext)s'
-    : '%(title).120B.%(ext)s';
+    ? `${title} [%(section_start).1f-%(section_end).1f].%(ext)s`
+    : `${title}.%(ext)s`;
 
   const args = [
     ...commonArgs(tools),
+    ...headerArgs(headers),
     '--ffmpeg-location', path.dirname(tools.path('ffmpegDownload') ?? tools.path('ffmpeg')),
     '--no-mtime',
     '--newline',
@@ -154,7 +165,7 @@ function buildArgs(options, tools, tempDir) {
 }
 
 function validate(options) {
-  if (!/^https?:\/\//i.test(options.url ?? '')) throw new UserError('Bitte gib einen gültigen Link ein.');
+  if (!/^https?:\/\//i.test(options.url ?? '')) throw new UserError(t('Bitte gib einen gültigen Link ein.'));
   if (!options.folder) throw new UserError(t('Bitte wähle einen Zielordner.'));
 
   const seen = new Set();
@@ -205,7 +216,7 @@ function installPreviewHeaders() {
 
   return (info) => {
     current = {
-      referer: info.url,
+      referer: info.previewHeaders?.Referer ?? info.url,
       userAgent: info.previewHeaders?.['User-Agent'] ?? null,
       thumbnail: info.thumbnail,
     };
@@ -214,6 +225,7 @@ function installPreviewHeaders() {
 
 function register({ ipcMain, queue, store, tools, send }) {
   const setPreviewSource = installPreviewHeaders();
+  const finder = createPageFinder({ send });
   const getHistory = () => store.get('history');
 
   function addHistory(entry) {
@@ -294,7 +306,7 @@ function register({ ipcMain, queue, store, tools, send }) {
         id: randomUUID(),
         title: options.title,
         thumbnail: options.thumbnail ?? null,
-        url: options.url,
+        url: options.pageUrl ?? options.url,
         mode: options.mode,
         files: saved,
         date: new Date().toISOString(),
@@ -306,18 +318,48 @@ function register({ ipcMain, queue, store, tools, send }) {
     }
   }
 
+  async function readInfo(url, source = null) {
+    if (!/^https?:\/\//i.test(url ?? '')) throw new UserError(t('Bitte gib einen gültigen Link ein.'));
+    const args = [...commonArgs(tools), ...headerArgs(source?.headers), '-J', '--no-warnings', '--playlist-items', '1', '--', url];
+    const { stdout } = await run(tools.path('ytdlp'), args);
+    const info = normalizeInfo(JSON.parse(stdout), url);
+    if (source) {
+      // Der Stream heißt meist nur "master" oder "index", die Seite hat den lesbaren Titel.
+      Object.assign(info, { title: source.title || info.title, headers: source.headers, pageUrl: source.pageUrl, playlist: null });
+    }
+    setPreviewSource(info);
+    return info;
+  }
+
   ipcMain.handle('download:info', async (_event, url) => {
     try {
-      if (!/^https?:\/\//i.test(url ?? '')) throw new UserError('Bitte gib einen gültigen Link ein.');
-      const args = [...commonArgs(tools), '-J', '--no-warnings', '--playlist-items', '1', '--', url];
-      const { stdout } = await run(tools.path('ytdlp'), args);
-      const info = normalizeInfo(JSON.parse(stdout), url);
-      setPreviewSource(info);
+      return { ok: true, info: await readInfo(url) };
+    } catch (error) {
+      // Kennt yt-dlp die Seite nicht, kann Vitool das Video noch beim Abspielen auf der Seite finden.
+      const canSearchPage = /unsupported url/i.test(String(error?.message)) || error?.noVideo === true;
+      return { ok: false, error: toGermanMessage(error), canSearchPage };
+    }
+  });
+
+  ipcMain.handle('download:findOnPage', (event, url) => {
+    if (!/^https?:\/\//i.test(url ?? '')) return { ok: false, error: t('Bitte gib einen gültigen Link ein.') };
+    finder.open(url, BrowserWindow.fromWebContents(event.sender));
+    return { ok: true };
+  });
+
+  ipcMain.handle('download:fromPage', async (_event, id) => {
+    try {
+      const source = await finder.take(id);
+      if (!source) throw new UserError(t('Dieses Video ist nicht mehr in der Liste. Spiele es bitte noch einmal ab.'));
+      const info = await readInfo(source.url, source);
+      finder.close();
       return { ok: true, info };
     } catch (error) {
       return { ok: false, error: toGermanMessage(error) };
     }
   });
+
+  ipcMain.handle('download:closeFinder', () => finder.close());
 
   ipcMain.handle('download:start', (_event, options) => {
     try {
@@ -335,7 +377,7 @@ function register({ ipcMain, queue, store, tools, send }) {
 
   ipcMain.handle('download:playlist', async (_event, url) => {
     try {
-      if (!/^https?:\/\//i.test(url ?? '')) throw new UserError('Bitte gib einen gültigen Link ein.');
+      if (!/^https?:\/\//i.test(url ?? '')) throw new UserError(t('Bitte gib einen gültigen Link ein.'));
       const base = commonArgs(tools).filter((arg) => arg !== '--no-playlist');
       const args = [...base, '-J', '--flat-playlist', '--yes-playlist', '--no-warnings', '--', url];
       const { stdout } = await run(tools.path('ytdlp'), args);

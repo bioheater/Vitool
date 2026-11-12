@@ -1139,6 +1139,74 @@ body {
   min-width: 120px;
 }
 
+/* Tonspur angleichen */
+.sync-canvas {
+  background: color-mix(in srgb, var(--well) 55%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  cursor: grab;
+  display: block;
+  height: 180px;
+  touch-action: none;
+  width: 100%;
+}
+
+.sync-canvas.dragging {
+  cursor: grabbing;
+}
+
+.sync-controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sync-controls input[type='range'] {
+  flex: 1;
+  min-width: 160px;
+}
+
+.sync-time {
+  font-variant-numeric: tabular-nums;
+  min-width: 110px;
+}
+
+.sync-offset {
+  font-variant-numeric: tabular-nums;
+  min-width: 90px;
+}
+
+.sync-tempo p {
+  margin: 0 0 8px;
+}
+
+.sync-video {
+  border-radius: var(--radius-small);
+  max-height: 360px;
+  width: 100%;
+}
+
+.track-row .button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.track-offset {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.track-offset.spacer {
+  visibility: hidden;
+}
+
+.track-offset .input {
+  text-align: right;
+  width: 64px;
+}
+
 .track-row select.input {
   max-width: 130px;
 }
@@ -1532,6 +1600,45 @@ body {
   display: flex;
   gap: 12px;
   justify-content: space-between;
+}
+
+/* Auf einer Seite gefundene Videos */
+.found-list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.found-row {
+  align-items: center;
+  background: color-mix(in srgb, var(--well) 42%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  display: flex;
+  gap: 12px;
+  padding: 8px 10px;
+}
+
+.found-row .video-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.found-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.found-kind {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 9px;
 }
 
 .playlist-list {

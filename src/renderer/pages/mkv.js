@@ -3,7 +3,8 @@ import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { createFileDrop } from '../components/file-drop.js';
 import { createSendTo } from '../components/send-to.js';
-import { t } from '../utils/i18n.js';
+import { SyncPanel } from '../components/sync-panel.js';
+import { t, LANGUAGE } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
@@ -22,6 +23,7 @@ const FEATURES = [
 
 const state = { files: [], tracks: [], folder: null };
 let parts = {};
+let syncPanel = null;
 
 function setMessage(text) {
   parts.message.textContent = text;
@@ -57,6 +59,65 @@ function toggleDefault(track) {
   renderTracks();
 }
 
+const OFFSET_FORMAT = new Intl.NumberFormat(LANGUAGE, { maximumFractionDigits: 3, useGrouping: false, signDisplay: 'exceptZero' });
+
+// Erlaubt "1,5", "-0.25" oder "+2". Ein leeres Feld heißt: nicht verschieben.
+function parseOffset(text) {
+  const value = text.trim().replace(',', '.');
+  if (value === '') return 0;
+  if (!/^[+-]?\d*\.?\d+$/.test(value)) return null;
+  const seconds = Number(value);
+  return Math.abs(seconds) <= 3600 ? Math.round(seconds * 1000) / 1000 : null;
+}
+
+function offsetField(track) {
+  // Videospuren bekommen einen unsichtbaren Platzhalter, damit die Felder untereinander bündig bleiben.
+  if (track.type === 'video') {
+    return el('span', { class: 'track-offset spacer', 'aria-hidden': 'true' },
+      el('span', { class: 'muted' }, t('Versatz')), el('input', { class: 'input', disabled: true, tabIndex: -1 }), el('span', { class: 'muted' }, 's'));
+  }
+  const shown = (value) => (value ? OFFSET_FORMAT.format(value) : '');
+  const input = el('input', {
+    class: 'input',
+    value: shown(track.offset),
+    placeholder: '0',
+    inputmode: 'decimal',
+    'aria-label': t('Versatz in Sekunden'),
+    onchange: () => {
+      const value = parseOffset(input.value);
+      if (value === null) {
+        input.value = shown(track.offset);
+        setMessage(t('Gib den Versatz in Sekunden ein, zum Beispiel 1,5 oder -0,3.'));
+        return;
+      }
+      setMessage('');
+      track.offset = value;
+      input.value = shown(value);
+      syncPanel.refresh();
+    },
+  });
+  return el('label', {
+    class: 'track-offset',
+    title: t('Positiv: Die Spur setzt später ein. Negativ: Sie setzt früher ein.'),
+  }, el('span', { class: 'muted' }, t('Versatz')), input, el('span', { class: 'muted' }, 's'));
+}
+
+// Angleichen lohnt sich nur, wenn es eine zweite Tonspur zum Vergleichen gibt.
+function syncButton(track) {
+  const audio = state.tracks.filter((entry) => entry.type === 'audio').length;
+  if (track.type !== 'audio' || audio < 2) return null;
+  const active = syncPanel.isOpenFor(track);
+  return el('button', {
+    class: `button small ${active ? 'active' : ''}`,
+    'aria-pressed': String(active),
+    title: t('Wellenform vergleichen, Versatz und Tempo automatisch finden'),
+    onclick: () => {
+      syncPanel.open(track);
+      renderTracks();
+    },
+  }, t('Angleichen'));
+}
+
 function trackRow(track) {
   const fromMain = track.source === 0;
   const keep = el('input', {
@@ -74,7 +135,11 @@ function trackRow(track) {
     el('span', { class: `track-type ${track.type}` }, TYPE_LABELS[track.type]),
     el('div', { class: 'track-info' },
       el('strong', {}, track.codec.toUpperCase()),
-      el('span', { class: 'muted' }, [track.info, fromMain ? '' : t('Neu')].filter(Boolean).join(' · ') || ' ')),
+      el('span', { class: 'muted' }, [
+        track.info,
+        fromMain ? '' : t('Neu'),
+        Math.abs((track.stretch ?? 1) - 1) > 1e-6 ? t('Tempo angepasst') : '',
+      ].filter(Boolean).join(' · ') || ' ')),
     languageSelect(track),
     el('input', {
       class: 'input track-name',
@@ -85,6 +150,8 @@ function trackRow(track) {
         track.name = event.target.value;
       },
     }),
+    offsetField(track),
+    syncButton(track),
     flagToggle(t('Standard'), track.isDefault, () => toggleDefault(track)),
     flagToggle(t('Erzwungen'), track.forced, () => {
       track.forced = !track.forced;
@@ -100,6 +167,7 @@ function renderTracks() {
   parts.tracks.replaceChildren(...state.tracks.map(trackRow));
   const kept = state.tracks.filter((track) => track.keep).length;
   parts.count.textContent = t('{kept} von {total} Spuren werden behalten', { kept, total: state.tracks.length });
+  syncPanel.refresh();
 }
 
 async function openFile(filePath) {
@@ -110,6 +178,7 @@ async function openFile(filePath) {
     return;
   }
 
+  syncPanel.close();
   state.files = [filePath];
   state.tracks = response.tracks;
   state.folder = folderOf(filePath);
@@ -148,6 +217,7 @@ function removeSource(source) {
 }
 
 function closeFile() {
+  syncPanel.close();
   state.files = [];
   state.tracks = [];
   setMessage('');
@@ -190,6 +260,12 @@ function buildPage(root) {
     folder: el('span', { class: 'folder-path' }),
   };
 
+  syncPanel = new SyncPanel({
+    getFiles: () => state.files,
+    getTracks: () => state.tracks,
+    onChange: renderTracks,
+  });
+
   parts.workspace.append(
     el('section', { class: 'card file-card' },
       el('div', { class: 'video-text' }, parts.name, parts.count),
@@ -200,6 +276,7 @@ function buildPage(root) {
     el('section', { class: 'card stack' },
       el('div', { class: 'url-row' }, el('span', { class: 'muted' }, t('Titel')), parts.title),
       parts.tracks,
+      el('p', { class: 'muted' }, t('Passt eine Tonspur oder ein Untertitel nicht zum Bild, trage beim Versatz Sekunden ein: positiv, wenn der Ton zu früh kommt, negativ, wenn er zu spät kommt.')),
       createFileDrop({
         onFile: addFile,
         title: t('Spur hinzufügen'),
@@ -208,6 +285,7 @@ function buildPage(root) {
         compact: true,
       }),
     ),
+    syncPanel.root,
     el('section', { class: 'card stack' },
       el('p', { class: 'muted' }, t('Das Ergebnis ist eine MKV-Datei. Es wird nichts neu kodiert, die Qualität bleibt gleich und es dauert meist nur Sekunden. Kapitel bleiben erhalten.')),
       el('div', { class: 'folder-row' },

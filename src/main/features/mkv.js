@@ -1,13 +1,16 @@
 // Bereich MKV: Spuren ansehen, auswählen, benennen, hinzufügen und einzeln herausholen.
 // Alles läuft ohne Neukodierung, die Qualität bleibt also unverändert.
 const fs = require('fs/promises');
+const fsSync = require('fs');
 const os = require('os');
+const { pathToFileURL } = require('url');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run } = require('../core/process-runner');
 const { runFfmpeg } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
 const { t } = require('../core/i18n');
+const { analyzeSync, readEnvelope } = require('../core/audio-sync');
 
 const EXTRACT_EXTENSIONS = {
   subrip: 'srt', ass: 'ass', ssa: 'ssa', webvtt: 'vtt', mov_text: 'srt',
@@ -15,6 +18,49 @@ const EXTRACT_EXTENSIONS = {
 };
 const FALLBACK_EXTENSIONS = { video: 'mkv', audio: 'mka', subtitle: 'mks' };
 const CHANNEL_NAMES = { 1: 'Mono', 2: 'Stereo', 6: '5.1', 8: '7.1' };
+const MAX_OFFSET = 3600;
+const LOSSLESS = /^(flac|truehd|mlp|alac|pcm_)/;
+const previewDir = path.join(os.tmpdir(), `vitool-abgleich-${process.pid}`);
+
+// Eine Spur mit anderem Tempo muss neu kodiert werden. Verlustfreie Spuren bleiben verlustfrei,
+// Kino-Formate werden AC3, alles andere AAC. Die Bitrate orientiert sich an der Quelle.
+function retimeEncoder({ codec, channels, bitRate }) {
+  const kbit = bitRate ? Math.round(bitRate / 1000) : null;
+  if (LOSSLESS.test(codec) || channels > 6) return { args: ['-c:a', 'flac'], label: 'FLAC' };
+  if (/^(ac3|eac3|dts)/.test(codec)) {
+    const rate = channels > 2 ? 640 : Math.min(448, Math.max(192, kbit ?? 256));
+    return { args: ['-c:a', 'ac3', '-b:a', `${rate}k`], label: `AC3 · ${rate} kbit/s` };
+  }
+  const rate = Math.min(512, Math.max(64 * (channels ?? 2), kbit ?? 96 * (channels ?? 2)));
+  return { args: ['-c:a', 'aac', '-b:a', `${rate}k`], label: `AAC · ${rate} kbit/s` };
+}
+
+// Dehnt die Spur um den Faktor stretch, Tonhöhe inklusive, so wie beim Umrechnen zwischen 25 und 24
+// Bildern pro Sekunde. asetrate kennt nur ganze Zahlen. Deshalb wird vorher auf eine Rate gebracht,
+// bei der das Verhältnis aufgeht. Sonst summiert sich der Rundungsfehler über einen Film auf.
+function retimeFilter(sampleRate, stretch) {
+  let best = { rate: sampleRate, error: Infinity };
+  for (let rate = sampleRate; rate <= sampleRate * 4; rate += 1) {
+    const target = rate / stretch;
+    const error = Math.abs(Math.round(target) / target - 1);
+    if (error < best.error) best = { rate, error };
+    if (error < 1e-9) break;
+  }
+  return `aresample=${best.rate},asetrate=${Math.round(best.rate / stretch)},aresample=${sampleRate}`;
+}
+
+function isRetimed(track) {
+  return track.type === 'audio' && Math.abs((track.stretch ?? 1) - 1) > 1e-6;
+}
+
+// Matroska speichert die Länge einer Spur als Text, etwa "01:52:03.456000000".
+function streamDuration(stream, fallback) {
+  const direct = Number(stream.duration);
+  if (direct > 0) return direct;
+  const tag = Object.entries(stream.tags ?? {}).find(([key]) => /^duration/i.test(key))?.[1];
+  const match = /^(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(tag ?? '');
+  return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) : fallback;
+}
 
 function describeTrack(stream) {
   if (stream.codec_type === 'video') return `${stream.width} × ${stream.height}`;
@@ -22,8 +68,17 @@ function describeTrack(stream) {
   return '';
 }
 
-function toTrack(stream, source) {
+function toTrack(stream, source, fileDuration) {
+  const bitRate = Number(stream.bit_rate || stream.tags?.BPS || stream.tags?.['BPS-eng']) || null;
   return {
+    duration: streamDuration(stream, fileDuration),
+    sampleRate: Number(stream.sample_rate) || null,
+    channels: stream.channels ?? null,
+    bitRate,
+    stretch: 1,
+    retimeLabel: stream.codec_type === 'audio'
+      ? retimeEncoder({ codec: stream.codec_name ?? '', channels: stream.channels, bitRate }).label
+      : null,
     source,
     index: stream.index,
     type: stream.codec_type,
@@ -33,6 +88,7 @@ function toTrack(stream, source) {
     name: stream.tags?.title ?? '',
     isDefault: stream.disposition?.default === 1,
     forced: stream.disposition?.forced === 1,
+    offset: 0,
     keep: true,
   };
 }
@@ -43,13 +99,13 @@ async function readTracks(ffprobe, filePath) {
   const usable = streams.filter((stream) =>
     ['video', 'audio', 'subtitle'].includes(stream.codec_type) && !stream.disposition?.attached_pic);
   if (usable.length === 0) throw new UserError(t('In dieser Datei wurden keine Spuren gefunden.'));
-  return { title: format.tags?.title ?? '', streams: usable };
+  return { title: format.tags?.title ?? '', streams: usable, duration: Number(format.duration) || null };
 }
 
 function trackArgs(track, outputIndex) {
   const flags = [track.isDefault && 'default', track.forced && 'forced'].filter(Boolean).join('+') || '0';
   const args = [
-    '-map', `${track.source}:${track.index}`,
+    '-map', track.shifted ?? `${track.source}:${track.index}`,
     `-metadata:s:${outputIndex}`, `language=${track.language}`,
     `-metadata:s:${outputIndex}`, `title=${track.name}`,
     `-disposition:${outputIndex}`, flags,
@@ -57,23 +113,51 @@ function trackArgs(track, outputIndex) {
   return args;
 }
 
-function register({ ipcMain, queue, tools }) {
+function register({ ipcMain, queue, tools, send }) {
   ipcMain.handle('mkv:read', async (_event, filePath, source = 0) => {
     try {
-      const { title, streams } = await readTracks(tools.path('ffprobe'), filePath);
-      return { ok: true, title, tracks: streams.map((stream) => toTrack(stream, source)) };
+      const { title, streams, duration } = await readTracks(tools.path('ffprobe'), filePath);
+      return { ok: true, title, tracks: streams.map((stream) => toTrack(stream, source, duration)) };
     } catch (error) {
       return { ok: false, error: toGermanMessage(error) };
     }
   });
 
+  // Eine verschobene Spur kommt zuerst in eine eigene Datei. Nur so lässt sich ihr Anfang
+  // abschneiden, ohne neu zu kodieren: In der ganzen Datei würde FFmpeg zum letzten Schlüsselbild
+  // des Videos springen und gar nicht verschieben. Später beginnen geht über einen Zeitversatz.
+  async function shiftTracks(options, kept, tempDir, job) {
+    const inputs = options.files.flatMap((file) => ['-i', file]);
+    let next = options.files.length;
+    for (const track of kept.filter((entry) => entry.offset || isRetimed(entry))) {
+      const retimed = isRetimed(track);
+      job.update({
+        detail: retimed ? t('Passt Tempo von Spur {number} an', { number: track.index + 1 }) : t('Verschiebt Spur {number}', { number: track.index + 1 }),
+        progress: retimed ? 0 : null,
+      });
+      const file = path.join(tempDir, `spur-${next}.mkv`);
+      const cut = track.offset < 0 ? ['-ss', String(-track.offset)] : [];
+      let codec = track.codec === 'mov_text' ? ['-c', 'srt'] : ['-c', 'copy'];
+      if (retimed) codec = ['-af', retimeFilter(track.sampleRate, track.stretch), ...retimeEncoder(track).args];
+      await runFfmpeg(tools.path('ffmpeg'), ['-i', options.files[track.source], '-map', `0:${track.index}`, ...codec, ...cut, file], {
+        signal: job.signal,
+        duration: retimed ? (track.duration ?? 0) * track.stretch : 0,
+        onProgress: (part) => job.update({ progress: part * 100 }),
+      });
+      inputs.push(...(track.offset > 0 ? ['-itsoffset', String(track.offset)] : []), '-i', file);
+      track.shifted = `${next}:0`;
+      next += 1;
+    }
+    return inputs;
+  }
+
   async function runSave(options, kept, job) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-'));
     const output = path.join(tempDir, 'ergebnis.mkv');
-    const inputs = options.files.flatMap((file) => ['-i', file]);
     const name = path.parse(options.files[0]).name;
 
     try {
+      const inputs = await shiftTracks(options, kept, tempDir, job);
       job.update({ detail: t('Speichert Spuren') });
       await runFfmpeg(tools.path('ffmpeg'), [
         ...inputs,
@@ -86,7 +170,7 @@ function register({ ipcMain, queue, tools }) {
         '-metadata', `title=${options.title}`,
         output,
       ], { signal: job.signal });
-      return await moveFile(output, options.folder, `${name} (bearbeitet).mkv`);
+      return await moveFile(output, options.folder, `${name} (${t('bearbeitet')}).mkv`);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -95,6 +179,12 @@ function register({ ipcMain, queue, tools }) {
   ipcMain.handle('mkv:save', (_event, options) => {
     const kept = options.tracks.filter((track) => track.keep);
     if (kept.length === 0) return { ok: false, error: t('Bitte behalte mindestens eine Spur.') };
+    kept.forEach((track) => {
+      const offset = Number(track.offset) || 0;
+      track.offset = track.type === 'video' ? 0 : Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, offset));
+      const stretch = Number(track.stretch) || 1;
+      track.stretch = track.type === 'audio' && track.sampleRate && stretch > 0.8 && stretch < 1.25 ? stretch : 1;
+    });
     if (!options.folder) return { ok: false, error: t('Bitte wähle einen Zielordner.') };
     queue.add({
       title: path.basename(options.files[0]),
@@ -115,12 +205,74 @@ function register({ ipcMain, queue, tools }) {
 
     try {
       job.update({ detail: t('Holt Spur heraus') });
-      await runFfmpeg(tools.path('ffmpeg'), ['-i', options.filePath, '-map', `0:${track.index}`, ...codec, output], { signal: job.signal });
+      const format = ext === 'mks' ? ['-f', 'matroska'] : [];
+      await runFfmpeg(tools.path('ffmpeg'), ['-i', options.filePath, '-map', `0:${track.index}`, ...codec, ...format, output], { signal: job.signal });
       return await moveFile(output, options.folder, `${name} (${t('Spur {number}', { number: track.index + 1 })}${language}).${ext}`);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
   }
+
+  // Lautstärkeverlauf eines Ausschnitts für die Wellenform.
+  ipcMain.handle('mkv:waveform', async (_event, { file, index, start, duration, bin }) => {
+    try {
+      const values = await readEnvelope(tools.path('ffmpeg'), file, index, start, duration, bin);
+      return { ok: true, values };
+    } catch (error) {
+      return { ok: false, error: toGermanMessage(error) };
+    }
+  });
+
+  let analysis = null;
+  ipcMain.handle('mkv:analyzeSync', async (_event, { reference, track }) => {
+    analysis?.abort();
+    const controller = new AbortController();
+    analysis = controller;
+    try {
+      const result = await analyzeSync(tools.path('ffmpeg'), reference, track, {
+        signal: controller.signal,
+        onProgress: (part) => send('mkv:syncProgress', { part }),
+      });
+      return { ok: true, result };
+    } catch (error) {
+      if (controller.signal.aborted) return { ok: false, canceled: true };
+      return { ok: false, error: toGermanMessage(error) };
+    } finally {
+      if (analysis === controller) analysis = null;
+    }
+  });
+
+  // Kurzer Probeclip: Bild aus dem Video, Ton aus der Spur mit Versatz und Tempo wie beim Speichern.
+  ipcMain.handle('mkv:syncPreview', async (_event, { video, track, start, length }) => {
+    try {
+      await fs.rm(previewDir, { recursive: true, force: true });
+      await fs.mkdir(previewDir, { recursive: true });
+      const output = path.join(previewDir, `probe-${Date.now()}.mp4`);
+      const stretch = Number(track.stretch) || 1;
+      let seek = (start - track.offset) / stretch;
+      let delay = 0;
+      if (seek < 0) {
+        delay = -seek * stretch;
+        seek = 0;
+      }
+      const filters = [
+        ...(Math.abs(stretch - 1) > 1e-6 && track.sampleRate ? [retimeFilter(track.sampleRate, stretch)] : []),
+        ...(delay > 0 ? [`adelay=${Math.round(delay * 1000)}:all=1`] : []),
+      ];
+      await runFfmpeg(tools.path('ffmpeg'), [
+        '-ss', String(Math.max(0, start)), '-t', String(length), '-i', video.file,
+        '-ss', seek.toFixed(3), '-i', track.file,
+        '-map', `0:${video.index}`, '-map', `1:${track.index}`,
+        '-vf', 'scale=-2:2*trunc(min(480\\,ih)/2)',
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-pix_fmt', 'yuv420p',
+        ...(filters.length ? ['-af', filters.join(',')] : []),
+        '-ac', '2', '-c:a', 'aac', '-b:a', '128k', '-t', String(length), '-movflags', '+faststart', output,
+      ]);
+      return { ok: true, url: pathToFileURL(output).href };
+    } catch (error) {
+      return { ok: false, error: toGermanMessage(error) };
+    }
+  });
 
   ipcMain.handle('mkv:extract', (_event, options) => {
     queue.add({
@@ -132,4 +284,8 @@ function register({ ipcMain, queue, tools }) {
   });
 }
 
-module.exports = { register };
+function dispose() {
+  fsSync.rmSync(previewDir, { recursive: true, force: true });
+}
+
+module.exports = { register, dispose, retimeFilter, retimeEncoder };
