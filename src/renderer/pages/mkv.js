@@ -73,11 +73,6 @@ function parseOffset(text) {
 }
 
 function offsetField(track) {
-  // Videospuren bekommen einen unsichtbaren Platzhalter, damit die Felder untereinander bündig bleiben.
-  if (track.type === 'video') {
-    return el('span', { class: 'track-offset spacer', 'aria-hidden': 'true' },
-      el('span', { class: 'muted' }, t('Versatz')), el('input', { class: 'input', disabled: true, tabIndex: -1 }), el('span', { class: 'muted' }, 's'));
-  }
   const shown = (value) => (value ? OFFSET_FORMAT.format(value) : '');
   const input = el('input', {
     class: 'input',
@@ -167,9 +162,6 @@ function trackRow(track) {
         track.name = event.target.value;
       },
     }),
-    offsetField(track),
-    syncButton(track),
-    volumeButton(track),
     flagToggle(t('Standard'), track.isDefault, () => toggleDefault(track)),
     flagToggle(t('Erzwungen'), track.forced, () => {
       track.forced = !track.forced;
@@ -178,6 +170,11 @@ function trackRow(track) {
     fromMain
       ? el('button', { class: 'button small', onclick: () => extractTrack(track) }, t('Herausholen'))
       : el('button', { class: 'button small', onclick: () => removeSource(track.source) }, t('Entfernen')),
+    // Werkzeuge für Ton und Untertitel in einer eigenen Zeile, damit die obere nicht überläuft.
+    track.type === 'video' ? null : el('div', { class: 'track-tools' },
+      offsetField(track),
+      syncButton(track),
+      volumeButton(track)),
   );
 }
 
@@ -187,6 +184,17 @@ function renderTracks() {
   parts.count.textContent = t('{kept} von {total} Spuren werden behalten', { kept, total: state.tracks.length });
   syncPanel.refresh();
   volumePanel.refresh();
+}
+
+// Das Bild kommt etwas später. Gehört es nicht mehr zur geöffneten Datei, wird es verworfen.
+async function showThumbnail(filePath) {
+  parts.thumb.hidden = true;
+  parts.thumb.removeAttribute('src');
+  const duration = Math.max(0, ...state.tracks.map((track) => track.duration ?? 0));
+  const response = await invoke('media:thumbnail', filePath, duration);
+  if (!response.ok || state.files[0] !== filePath) return;
+  parts.thumb.src = response.url;
+  parts.thumb.hidden = false;
 }
 
 async function openFile(filePath) {
@@ -204,6 +212,7 @@ async function openFile(filePath) {
   state.folder = folderOf(filePath);
 
   parts.name.textContent = filePath.slice(state.folder.length + 1);
+  showThumbnail(filePath);
   parts.name.title = filePath;
   parts.title.value = response.title;
   parts.folder.textContent = state.folder;
@@ -275,6 +284,7 @@ function buildPage(root) {
     drop: createFileDrop({ onFile: openFile, title: t('Video mit Spuren hierher ziehen'), features: FEATURES }),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
+    thumb: el('img', { class: 'thumb', alt: '', hidden: true }),
     count: el('p', { class: 'muted' }),
     title: el('input', { class: 'input grow', placeholder: t('Titel des Videos'), 'aria-label': t('Titel des Videos') }),
     tracks: el('ul', { class: 'track-list' }),
@@ -294,7 +304,7 @@ function buildPage(root) {
 
   parts.workspace.append(
     el('section', { class: 'card file-card' },
-      el('div', { class: 'video-text' }, parts.name, parts.count),
+      el('div', { class: 'video-card' }, parts.thumb, el('div', { class: 'video-text' }, parts.name, parts.count)),
       el('div', { class: 'file-actions' },
         createSendTo({ getPath: () => state.files[0], exclude: 'mkv' }),
         el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),

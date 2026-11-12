@@ -40,6 +40,28 @@ function register({ ipcMain, queue, tools }) {
     }
   });
 
+  // Kleines Vorschaubild einer lokalen Datei. Das erste Bild ist oft schwarz oder ein Logo, deshalb
+  // sucht FFmpeg um etwa ein Zehntel der Laufzeit aus mehreren Bildern ein typisches heraus.
+  const thumbnails = new Map();
+  ipcMain.handle('media:thumbnail', async (_event, filePath, duration) => {
+    try {
+      if (!thumbnails.has(filePath)) {
+        await fs.mkdir(previewDir, { recursive: true });
+        const output = path.join(previewDir, `bild-${Date.now()}-${thumbnails.size}.jpg`);
+        const time = duration > 5 ? Math.min(duration * 0.1, 300) : 0;
+        await runFfmpeg(tools.path('ffmpeg'), [
+          '-ss', time.toFixed(2), '-i', filePath,
+          '-map', '0:v:0', '-vf', 'thumbnail=40,scale=320:-2', '-frames:v', '1', '-q:v', '4', output,
+        ]);
+        thumbnails.set(filePath, pathToFileURL(output).href);
+      }
+      return { ok: true, url: thumbnails.get(filePath) };
+    } catch {
+      // Ohne Videospur oder bei unlesbarem Bild bleibt es einfach beim Text.
+      return { ok: false };
+    }
+  });
+
   ipcMain.handle('media:preparePreview', async (_event, filePath) => {
     try {
       const media = await probeMedia(tools.path('ffprobe'), filePath);

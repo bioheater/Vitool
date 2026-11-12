@@ -1192,14 +1192,22 @@ body {
   color: var(--accent);
 }
 
+/* Zweite Zeile einer Spur, eingerückt unter den Codec */
+.track-tools {
+  align-items: center;
+  border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-left: 26px;
+  padding-top: 8px;
+}
+
 .track-offset {
   align-items: center;
   display: flex;
   gap: 6px;
-}
-
-.track-offset.spacer {
-  visibility: hidden;
 }
 
 .track-offset .input {
@@ -1800,4 +1808,14 @@ body {
 
 .notice .button {
   margin-left: 10px;
+}
+
+/* Vorschaubild neben dem Dateinamen */
+.file-card .video-card {
+  min-width: 0;
+}
+
+.file-card .thumb {
+  background: var(--well);
+  width: 128px;
 }

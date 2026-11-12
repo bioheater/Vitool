@@ -30,6 +30,7 @@ const INVOKE_CHANNELS = [
   'dialog:pickVideo',
   'media:probe',
   'media:preparePreview',
+  'media:thumbnail',
   'cut:export',
   'convert:plan',
   'convert:start',
