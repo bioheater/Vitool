@@ -529,21 +529,6 @@ body {
 }
 
 /* Punkt an "Einstellungen", solange ein Update wartet. */
-.nav-item.has-update {
-  position: relative;
-}
-
-.nav-item.has-update::after {
-  background: var(--accent);
-  border-radius: 50%;
-  content: '';
-  height: 8px;
-  left: 24px;
-  position: absolute;
-  top: 7px;
-  width: 8px;
-}
-
 .tool-setting strong {
   min-width: 64px;
 }
@@ -1867,4 +1852,113 @@ body {
 
 .risk-box ul {
   list-style: disc;
+}
+
+/* Update in der Seitenleiste: Schild bei offener Leiste, Punkt bei eingeklappter */
+.nav-badge {
+  background: var(--accent-soft);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  margin-left: auto;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.nav-dot {
+  background: var(--accent);
+  border-radius: 50%;
+  display: none;
+  height: 8px;
+  left: 24px;
+  position: absolute;
+  top: 7px;
+  width: 8px;
+}
+
+.nav-item:has(.nav-dot) {
+  position: relative;
+}
+
+.shell.collapsed .nav-badge,
+.shell.collapsed .update-hint {
+  display: none;
+}
+
+.shell.collapsed .nav-dot:not([hidden]) {
+  display: block;
+}
+
+.nav-dot.pulse::after {
+  animation: dot-pulse 1.8s ease-out 3;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+  content: '';
+  inset: -4px;
+  opacity: 0;
+  position: absolute;
+}
+
+@keyframes dot-pulse {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.6);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
+.update-hint {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  border-radius: var(--radius-small);
+  display: grid;
+  font-size: 13px;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 9px 10px;
+}
+
+.update-hint-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.update-hint-actions .icon-only {
+  margin-left: auto;
+  min-width: 28px;
+  padding-inline: 8px;
+}
+
+/* Was ist neu */
+.whats-new-dialog {
+  max-height: min(80vh, 640px);
+  max-width: 560px;
+}
+
+.whats-new-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.whats-new-body h3 {
+  font-size: 14px;
+  margin: 14px 0 6px;
+}
+
+.whats-new-body h3:first-child {
+  margin-top: 0;
+}
+
+.whats-new-list {
+  display: grid;
+  list-style: disc;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
 }

@@ -4,6 +4,8 @@ const fs = require('fs');
 class Store {
   constructor(filePath, defaults) {
     this.filePath = filePath;
+    // Ob es die Daten schon vor diesem Start gab, also keine frische Installation ist.
+    this.existed = fs.existsSync(filePath);
     this.data = { ...defaults, ...this.load() };
     this.data.settings = { ...defaults.settings, ...this.data.settings };
   }

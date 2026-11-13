@@ -4,6 +4,7 @@ const fs = require('fs/promises');
 const { run, CanceledError } = require('./process-runner');
 const { UserError } = require('./error-messages');
 const { binFolder } = require('./tool-installer');
+const { isNewer } = require('./versions');
 const { t } = require('./i18n');
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -27,17 +28,6 @@ function classify(error) {
   if (BOT_CHECK.test(text)) return 'bot';
   if (FINAL.test(text)) return 'final';
   return 'other';
-}
-
-// Versionen wie 2025.10.22 oder 2025.10.22.1, Teil für Teil als Zahl verglichen.
-function isNewer(latest, current) {
-  const parts = (value) => String(value ?? '').split('.').map((part) => Number.parseInt(part, 10) || 0);
-  const a = parts(latest);
-  const b = parts(current);
-  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
-    if ((a[index] ?? 0) !== (b[index] ?? 0)) return (a[index] ?? 0) > (b[index] ?? 0);
-  }
-  return false;
 }
 
 function urlOf(args) {

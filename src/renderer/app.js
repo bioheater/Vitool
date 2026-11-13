@@ -15,6 +15,8 @@ import { setupSidebar } from './components/sidebar.js';
 import { ICONS } from './utils/icons.js';
 import { setNavigator } from './utils/navigation.js';
 import { applyTheme, applyGlass } from './utils/themes.js';
+import { setupUpdateNotice } from './components/update-notice.js';
+import { showWhatsNew } from './components/whats-new-dialog.js';
 
 applyTheme(window.vitool.i18n.theme);
 if (window.vitool.i18n.glass) applyGlass(true);
@@ -59,12 +61,8 @@ pages.forEach((page) => {
 
 window.vitool.on('app:openInCut', (filePath) => showPage('cut', { filePath }));
 
-// Wartet ein Update, bekommt "Einstellungen" einen Punkt. Gesucht wird im Hauptprozess kurz nach dem Start.
-const markUpdate = (status) => {
-  navButtons.get('settings').classList.toggle('has-update', ['available', 'downloading', 'ready'].includes(status.state));
-};
-window.vitool.on('update:status', markUpdate);
-window.vitool.invoke('update:status').then(markUpdate);
+// Wartet ein Update, zeigt die Seitenleiste das an. Gesucht wird im Hauptprozess kurz nach dem Start.
+setupUpdateNotice({ settingsButton: navButtons.get('settings'), openSettings: () => showPage('settings') });
 setNavigator((id, data) => showPage(id, data));
 
 // Eine Datei, die neben einer Ablagefläche landet, soll nichts auslösen.
@@ -80,3 +78,7 @@ installVideoKeys();
 mountQueuePanel(document.getElementById('queue'));
 showPage('download');
 checkTools(document.getElementById('tools-dialog'));
+// Nach einem Update einmal zeigen, was neu ist. Weggeklickt gilt die Version als gesehen.
+window.vitool.invoke('app:whatsNew').then((notes) => {
+  showWhatsNew(document.getElementById('whats-new'), notes, { onClose: () => window.vitool.invoke('app:whatsNewSeen') });
+});

@@ -1,0 +1,34 @@
+[
+  {
+    "version": "0.3.0",
+    "de": [
+      "yt-dlp hält sich jetzt selbst aktuell. Scheitert ein Download, holt Vitool die neueste Version und versucht es gleich noch einmal. Abschalten lässt sich das in den Einstellungen.",
+      "Freiwillige Anmeldung bei YouTube für Videos mit Altersbeschränkung, private Videos und Videos nur für Kanalmitglieder. Was sie bringt und welche Risiken es gibt, steht direkt dabei.",
+      "Viele Fehlermeldungen haben jetzt einen Knopf, der das Problem gleich behebt, etwa „yt-dlp aktualisieren“ oder „Anmelden“.",
+      "Neue Versionen von Vitool fallen besser auf, und nach einem Update zeigt Vitool, was neu ist."
+    ],
+    "en": [
+      "yt-dlp now keeps itself up to date. If a download fails, Vitool gets the latest version and tries again right away. You can turn this off in Settings.",
+      "Optional sign-in to YouTube for age-restricted, private and members-only videos. What it's for and what the risks are is explained right there.",
+      "Many error messages now have a button that fixes the problem right away, such as \"Update yt-dlp\" or \"Sign in\".",
+      "New versions of Vitool are easier to notice, and after an update Vitool shows what's new."
+    ]
+  },
+  {
+    "version": "0.2.0",
+    "de": [
+      "Video auf der Seite finden: Kennt yt-dlp eine Seite nicht, öffnet Vitool sie in einem eigenen Fenster. Spiel das Video dort ab, und Vitool lädt es herunter.",
+      "Tonspuren angleichen (MKV): Vitool findet den Versatz einer Synchronfassung von selbst und gleicht auch PAL-Fassungen an, die mit der Zeit auseinanderlaufen.",
+      "Lautstärke (MKV): Spuren messen, eine leise Spur an das Original angleichen oder von Hand lauter und leiser stellen.",
+      "Versatz (MKV): Ton- und Untertitelspuren um einige Sekunden verschieben.",
+      "Der MKV-Bereich zeigt ein Vorschaubild des Videos."
+    ],
+    "en": [
+      "Find the video on the page: if yt-dlp doesn't know a site, Vitool opens it in its own window. Play the video there and Vitool downloads it.",
+      "Align audio tracks (MKV): Vitool finds the offset of a dub by itself and also fixes PAL versions that drift apart over time.",
+      "Volume (MKV): measure tracks, match a quiet track to the original or make it louder or quieter by hand.",
+      "Offset (MKV): shift audio and subtitle tracks by a few seconds.",
+      "The MKV area shows a thumbnail of the video."
+    ]
+  }
+]

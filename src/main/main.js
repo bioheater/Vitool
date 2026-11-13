@@ -21,6 +21,7 @@ const { installTools } = require('./core/tool-installer');
 const { YtDlp } = require('./core/ytdlp');
 const { createSignIn } = require('./core/sign-in');
 const { setupUpdater } = require('./core/updater');
+const whatsNew = require('./core/whats-new');
 const { CanceledError } = require('./core/process-runner');
 const { toGermanMessage } = require('./core/error-messages');
 const { listMediaFiles } = require('./core/files');
@@ -293,6 +294,7 @@ app.whenReady().then(() => {
   ipcMain.handle('queue:cancel', (_event, id) => queue.cancel(id));
   ipcMain.handle('queue:clearFinished', () => queue.clearFinished());
 
+  whatsNew.register({ ipcMain, store });
   const context = { ipcMain, queue, store, tools, send, ytdlp };
   features.forEach((feature) => feature.register(context));
 

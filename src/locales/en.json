@@ -798,5 +798,15 @@
   "Abmelden meldet das Konto bei Google ab und löscht die gespeicherte Anmeldung aus Vitool.": "Signing out signs the account out at Google and deletes the saved sign-in from Vitool.",
   "yt-dlp automatisch aktualisieren": "Update yt-dlp automatically",
   "Google hat die Anmeldung in diesem Fenster abgelehnt. Schließe es und versuche es später noch einmal.": "Google refused the sign-in in this window. Close it and try again later.",
-  "Dein yt-dlp ist systemweit installiert, etwa über winget. Das kann Vitool nicht aktualisieren. Mit „Eigene Kopie laden“ oben bekommt Vitool ein eigenes yt-dlp, das es selbst aktuell hält.": "Your yt-dlp is installed system-wide, for example via winget. Vitool can't update it. With \"Download own copy\" above, Vitool gets its own yt-dlp that it keeps up to date itself."
+  "Dein yt-dlp ist systemweit installiert, etwa über winget. Das kann Vitool nicht aktualisieren. Mit „Eigene Kopie laden“ oben bekommt Vitool ein eigenes yt-dlp, das es selbst aktuell hält.": "Your yt-dlp is installed system-wide, for example via winget. Vitool can't update it. With \"Download own copy\" above, Vitool gets its own yt-dlp that it keeps up to date itself.",
+  "Ansehen": "View",
+  "Hinweis ausblenden": "Hide notice",
+  "Update": "Update",
+  "Neu starten": "Restart",
+  "Version {version} ist da.": "Version {version} is here.",
+  "Version {version}": "Version {version}",
+  "Weiter": "Continue",
+  "Was ist neu": "What's new",
+  "Neu in Vitool": "New in Vitool",
+  "Neu in Vitool {version}": "New in Vitool {version}"
 }

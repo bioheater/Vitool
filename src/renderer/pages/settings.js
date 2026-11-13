@@ -3,6 +3,7 @@ import { el, pageHeader } from '../utils/dom.js';
 import { t, LANGUAGE, formatDate } from '../utils/i18n.js';
 import { THEMES, applyTheme, applyGlass } from '../utils/themes.js';
 import { showLicenses } from '../components/license-dialog.js';
+import { showWhatsNew } from '../components/whats-new-dialog.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 const { languages } = window.vitool.i18n;
@@ -317,7 +318,10 @@ function buildPage(root) {
     ),
     el('section', { class: 'card stack' },
       el('h2', {}, t('Über Vitool')),
-      el('div', { class: 'folder-row' }, el('span', { class: 'muted' }, t('Version')), parts.version),
+      el('div', { class: 'folder-row' },
+        el('span', { class: 'muted' }, t('Version')),
+        parts.version,
+        el('button', { class: 'button small', onclick: async () => showWhatsNew(parts.licenseRoot, await invoke('app:changelog')) }, t('Was ist neu'))),
       parts.update,
       el('div', { class: 'folder-row' },
         el('span', { class: 'muted' }, t('Lizenz')),
