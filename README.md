@@ -24,6 +24,8 @@
 ### Download
 - Paste a link from YouTube, Instagram, TikTok and many other sites, pick the quality, done
 - Audio only, single sections of a video, or whole playlists
+- If yt-dlp doesn't know a site, Vitool opens the page in its own window and downloads the video you play there
+- yt-dlp keeps itself up to date, and an optional YouTube sign-in helps with age-restricted or private videos
 - Download history with quick access to your files
 
 ![Checking a YouTube link before downloading](docs/screenshots/download.png)
@@ -51,6 +53,12 @@
 - Remove unneeded audio tracks and subtitles without re-encoding
 - Set language, name, default and forced flags
 - Add tracks or save them as separate files
+- **Align audio tracks**: Vitool finds the offset of a dub by itself and also fixes PAL versions
+  that slowly drift apart
+- Match a quiet track to the original volume, or make it louder or quieter by hand
+- Shift audio and subtitle tracks by a few seconds
+
+![Aligning a German dub with PAL speed detection](docs/screenshots/mkv.png)
 
 ### AI Mask (optional add-on)
 - Click an object, the AI finds its shape and tracks it through the video (SAM 2.1 by Meta)
