@@ -408,11 +408,15 @@ export class SyncPanel {
       this.resultText.textContent = t('Vitool konnte die Spuren nicht sicher vergleichen. Das passiert, wenn sie keine gemeinsame Musik und keine gemeinsamen Geräusche haben. Verschiebe die Wellenform dann von Hand.');
       return;
     }
-    const parts = [t('Versatz gefunden: {offset} s. Geprüft an {checked} Stellen, {agreeing} davon passen zusammen.', {
-      offset: NUMBER.format(result.offset) || '0',
-      checked: result.checked,
-      agreeing: result.agreeing,
-    })];
+    const offset = NUMBER.format(result.offset) || '0';
+    // Ein kurzer Ausschnitt reicht oft nur für eine Stelle, dann wäre "1 Stellen, 1 davon" schief.
+    const parts = [result.checked === 1
+      ? t('Versatz gefunden: {offset} s. Geprüft an einer Stelle.', { offset })
+      : t('Versatz gefunden: {offset} s. Geprüft an {checked} Stellen, {agreeing} davon passen zusammen.', {
+        offset,
+        checked: result.checked,
+        agreeing: result.agreeing,
+      })];
     if (result.cutsDiffer) {
       const list = result.sections.map((section) => t('ab {time}: {offset} s', {
         time: formatTime(section.time),

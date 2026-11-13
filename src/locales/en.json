@@ -808,5 +808,6 @@
   "Weiter": "Continue",
   "Was ist neu": "What's new",
   "Neu in Vitool": "New in Vitool",
-  "Neu in Vitool {version}": "New in Vitool {version}"
+  "Neu in Vitool {version}": "New in Vitool {version}",
+  "Versatz gefunden: {offset} s. Geprüft an einer Stelle.": "Offset found: {offset} s. Checked at one point."
 }
