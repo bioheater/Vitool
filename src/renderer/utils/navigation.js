@@ -25,3 +25,8 @@ export function sendTo(pageId, filePath) {
 export function isMediaFile(filePath) {
   return MEDIA_EXTENSIONS.includes(String(filePath).split('.').pop().toLowerCase());
 }
+
+// Öffnet einen Bereich, etwa die Einstellungen an einer bestimmten Stelle.
+export function openPage(pageId, data) {
+  navigate?.(pageId, data);
+}

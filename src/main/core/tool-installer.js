@@ -2,7 +2,6 @@
 // Jede Datei wird gegen die Prüfsumme geprüft, die das jeweilige Projekt im selben Release veröffentlicht.
 // Systemweit wird nichts installiert, über winget eingerichtete Programme bleiben als Ausweichlösung nutzbar.
 const fs = require('fs/promises');
-const fsSync = require('fs');
 const path = require('path');
 const { run } = require('./process-runner');
 const { UserError } = require('./error-messages');
@@ -122,12 +121,4 @@ async function installTools(missingIds, job) {
   }
 }
 
-// yt-dlp kann sich selbst aktualisieren, wenn es die eigene Kopie von Vitool ist.
-async function updateYtDlp() {
-  const exe = path.join(binFolder(), 'yt-dlp.exe');
-  if (!fsSync.existsSync(exe)) return null;
-  const { stdout } = await run(exe, ['-U']);
-  return stdout.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1) ?? '';
-}
-
-module.exports = { DOWNLOADS, binFolder, downloadsFor, installTools, updateYtDlp };
+module.exports = { DOWNLOADS, binFolder, downloadsFor, installTools };

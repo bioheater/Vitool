@@ -4,6 +4,7 @@ import { ICONS } from '../utils/icons.js';
 import { formatTime } from '../utils/time.js';
 import { SectionEditor } from '../components/section-editor.js';
 import { t, formatDate } from '../utils/i18n.js';
+import { fixButton } from '../components/error-fix.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
@@ -24,8 +25,10 @@ let editor = null;
 let stream = null;
 let previewStarted = false;
 
-function setMessage(text) {
-  parts.message.textContent = text;
+// Mit fix steht ein Knopf daneben, der die Ursache behebt. Nach einem Update geht es mit retry weiter.
+function setMessage(text, fix = null, retry = null) {
+  const button = fix ? fixButton(fix, { onDone: retry }) : null;
+  parts.message.replaceChildren(el('span', {}, text ?? ''), ...(button ? [button] : []));
   parts.message.hidden = !text;
 }
 
@@ -49,7 +52,7 @@ async function loadInfo() {
   parts.load.textContent = t('Prüfen');
   if (!response.ok) {
     if (response.canSearchPage) offerFinder(url);
-    else setMessage(response.error);
+    else setMessage(response.error, response.fix, loadInfo);
     return;
   }
   // Ein reiner Playlist-Link zeigt gleich die Liste, ein einzelnes Video daraus bietet sie an.
@@ -67,7 +70,7 @@ async function loadPlaylist(url) {
   parts.load.disabled = false;
   parts.load.textContent = t('Prüfen');
   if (!response.ok) {
-    setMessage(response.error);
+    setMessage(response.error, response.fix, () => loadPlaylist(url));
     return;
   }
   stopPreview();
@@ -554,6 +557,10 @@ export default {
     renderHistory(await invoke('download:history'));
     window.vitool.on('download:historyChanged', renderHistory);
     window.vitool.on('download:pageMedia', onPageMedia);
+    // Wartet das Prüfen auf ein yt-dlp-Update, soll der Knopf nicht einfach stehen bleiben.
+    window.vitool.on('ytdlp:status', (status) => {
+      if (parts.load.disabled && status.state === 'updating') parts.load.textContent = t('Aktualisiert yt-dlp …');
+    });
   },
   onHide() {
     parts.video.pause();

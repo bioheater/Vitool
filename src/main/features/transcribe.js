@@ -41,7 +41,7 @@ const INSTALL_SIZE_GB = 1.5;
 const INSTALL_SIZE_CPU_GB = 0.3;
 const SKIPPED_FILES = ['.gitattributes', 'README.md'];
 
-function register({ ipcMain, queue, store, tools, send }) {
+function register({ ipcMain, queue, store, tools, send, ytdlp }) {
   const root = path.join(app.getPath('userData'), 'transkription');
   const envDir = path.join(root, 'umgebung');
   const modelDir = path.join(root, 'modelle');
@@ -328,7 +328,7 @@ function register({ ipcMain, queue, store, tools, send }) {
       : ['-f', 'ba/b'];
     let filePath = null;
     job.update({ detail: `${label} …` });
-    await run(tools.path('ytdlp'), [
+    await ytdlp.run([
       ...commonArgs(tools),
       '--ffmpeg-location', path.dirname(tools.path('ffmpegDownload') ?? tools.path('ffmpeg')),
       '--newline', '--progress', '--no-quiet',
@@ -339,6 +339,10 @@ function register({ ipcMain, queue, store, tools, send }) {
       '--', url,
     ], {
       signal: job.signal,
+      onStatus: (detail, retrying) => {
+        if (retrying) filePath = null;
+        job.update({ detail, progress: null });
+      },
       onLine: (line) => {
         if (line.startsWith(LINK_FILE_MARKER)) filePath = line.slice(LINK_FILE_MARKER.length).trim();
         if (line.startsWith(LINK_PROGRESS_MARKER)) {

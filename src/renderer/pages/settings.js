@@ -1,6 +1,6 @@
 // Bereich Einstellungen: Sprache, Standard-Download-Ordner und Infos zu Vitool.
 import { el, pageHeader } from '../utils/dom.js';
-import { t, LANGUAGE } from '../utils/i18n.js';
+import { t, LANGUAGE, formatDate } from '../utils/i18n.js';
 import { THEMES, applyTheme, applyGlass } from '../utils/themes.js';
 import { showLicenses } from '../components/license-dialog.js';
 
@@ -148,6 +148,55 @@ function renderUpdate(status) {
   );
 }
 
+// Schalter und Stand des automatischen Updates von yt-dlp.
+function renderYtdlp(status) {
+  parts.autoUpdate.checked = status.auto;
+  parts.autoUpdate.disabled = !status.ownCopy;
+  const views = {
+    checking: t('Sieht nach einer neuen Version …'),
+    updating: t('Aktualisiert auf Version {version} …', { version: status.version }),
+    updated: t('Auf Version {version} aktualisiert.', { version: status.version }),
+    available: t('Version {version} ist verfügbar.', { version: status.version }),
+    error: t('Das Nachsehen hat nicht geklappt. Vitool versucht es später noch einmal.'),
+  };
+  let text = views[status.state] ?? '';
+  if (!text && status.checkedAt) text = t('Zuletzt nachgesehen: {date}', { date: formatDate(status.checkedAt) });
+  parts.ytdlpStatus.textContent = text;
+  parts.autoHint.textContent = !status.ownCopy
+    ? t('Dein yt-dlp ist systemweit installiert, etwa über winget. Das kann Vitool nicht aktualisieren. Mit „Eigene Kopie laden“ oben bekommt Vitool ein eigenes yt-dlp, das es selbst aktuell hält.')
+    : status.auto
+      ? t('Vitool sieht höchstens einmal am Tag nach, ob es eine neue Version gibt, und lädt sie dann (etwa 20 MB). Scheitert ein Download, sieht es gleich nach und versucht es danach noch einmal.')
+      : t('Vitool lädt keine Updates von selbst. Scheitert ein Download und gibt es eine neue Version, bietet Vitool das Update in der Fehlermeldung an.');
+  if (status.state === 'updated') renderTools();
+}
+
+// Die Anmeldung ist freiwillig. Erst wer die Hinweise bestätigt, kann das Anmeldefenster öffnen.
+function renderSignIn(status) {
+  const { signedIn, open, rejected, mode } = status;
+  parts.signInState.textContent = signedIn
+    ? t('Angemeldet. Vitool nutzt die Anmeldung nur für YouTube.')
+    : rejected
+      ? t('Google hat die Anmeldung in diesem Fenster abgelehnt. Schließe es und versuche es später noch einmal.')
+      : open
+      ? t('Melde dich im geöffneten Fenster an. Danach schließt es sich von selbst.')
+      : t('Nicht angemeldet.');
+  parts.signInAgree.hidden = signedIn;
+  parts.signInButton.hidden = signedIn;
+  parts.signInButton.disabled = !parts.signInCheck.checked || open;
+  parts.signOutButton.hidden = !signedIn;
+  parts.signInUse.hidden = !signedIn;
+  parts.signInMode.value = mode;
+}
+
+async function signOut() {
+  parts.signOutButton.disabled = true;
+  parts.signOutButton.textContent = t('Meldet ab …');
+  await invoke('signin:signOut');
+  parts.signOutButton.disabled = false;
+  parts.signOutButton.textContent = t('Abmelden');
+  parts.signInCheck.checked = false;
+}
+
 async function renderTools() {
   const { tools } = await invoke('tools:check');
   parts.tools.replaceChildren(...tools.filter((tool) => SHOWN_TOOLS.includes(tool.id)).map(toolRow));
@@ -157,8 +206,43 @@ function buildPage(root) {
   window.vitool.on('update:status', (status) => {
     if (parts.update) renderUpdate(status);
   });
+  window.vitool.on('ytdlp:status', (status) => {
+    if (parts.ytdlpStatus) renderYtdlp(status);
+  });
+  window.vitool.on('signin:status', (status) => {
+    if (parts.signInState) renderSignIn(status);
+  });
   parts = {
     tools: el('div', { class: 'stack' }),
+    autoUpdate: el('input', {
+      type: 'checkbox',
+      onchange: async (event) => {
+        settings = await invoke('settings:set', { ytdlpAutoUpdate: event.target.checked });
+      },
+    }),
+    ytdlpStatus: el('span', { class: 'muted' }),
+    autoHint: el('p', { class: 'muted' }),
+    signInCard: el('section', { class: 'card stack' }),
+    signInState: el('span', {}),
+    signInCheck: el('input', {
+      type: 'checkbox',
+      onchange: () => {
+        parts.signInButton.disabled = !parts.signInCheck.checked;
+      },
+    }),
+    signInAgree: el('label', { class: 'check' }),
+    signInButton: el('button', { class: 'button small primary', disabled: true, onclick: () => invoke('signin:open') }, t('Anmelden')),
+    signOutButton: el('button', { class: 'button small', onclick: signOut }, t('Abmelden')),
+    signInMode: el('select', {
+      class: 'input',
+      'aria-label': t('Anmeldung verwenden'),
+      onchange: async (event) => {
+        settings = await invoke('settings:set', { signInUse: event.target.value });
+      },
+    },
+    el('option', { value: 'needed' }, t('Nur wenn ein Video sie verlangt (empfohlen)')),
+    el('option', { value: 'always' }, t('Bei jedem Download von YouTube'))),
+    signInUse: el('div', { class: 'stack' }),
     update: el('div', { class: 'stack' }),
     licenseRoot: el('div', {}),
     glass: el('input', {
@@ -177,6 +261,25 @@ function buildPage(root) {
     dataFolder: el('span', { class: 'folder-path' }),
     themes: THEMES.map((theme) => themeTile(theme, document.documentElement.dataset.theme)),
   };
+
+  parts.signInAgree.append(parts.signInCheck, el('span', {}, t('Ich habe die Hinweise gelesen und möchte mich anmelden.')));
+  parts.signInUse.append(
+    el('label', { class: 'field' }, el('span', { class: 'muted' }, t('Anmeldung verwenden')), parts.signInMode),
+    el('p', { class: 'muted' }, t('Bei „Nur wenn ein Video sie verlangt“ lädt Vitool zuerst ohne Anmeldung und nimmt sie nur für einen zweiten Versuch. So wird das Konto möglichst selten benutzt.')),
+  );
+  parts.signInCard.append(
+    el('h2', {}, t('Anmeldung bei YouTube (freiwillig)')),
+    el('p', { class: 'muted' }, t('Die meisten Videos lädt Vitool ohne Anmeldung. Gebraucht wird sie nur für Videos mit Altersbeschränkung, für private Videos, die mit deinem Konto geteilt wurden, für Videos nur für Kanalmitglieder und wenn YouTube den Zugriff für automatisiert hält.')),
+    el('div', { class: 'risk-box' },
+      el('strong', {}, t('Bitte vorher lesen')),
+      el('ul', {},
+        el('li', {}, t('yt-dlp warnt selbst davor: Wer viel mit einem angemeldeten Konto herunterlädt, riskiert, dass YouTube das Konto vorübergehend oder ganz sperrt. Nimm am besten ein Zweitkonto, nicht dein Hauptkonto.')),
+        el('li', {}, t('Die Anmeldung wirkt wie ein Schlüssel zu deinem Konto. Sie bleibt nur auf diesem PC im Datenordner von Vitool und geht nur beim Download an yt-dlp, sonst an niemanden. Wer an diesen Ordner kommt, könnte sie aber nutzen.')),
+        el('li', {}, t('Abmelden meldet das Konto bei Google ab und löscht die gespeicherte Anmeldung aus Vitool.')))),
+    parts.signInAgree,
+    el('div', { class: 'folder-row' }, parts.signInState, parts.signInButton, parts.signOutButton),
+    parts.signInUse,
+  );
 
   // Das Lizenzfenster liegt über allem, deshalb direkt im Dokument und nicht in der Seite.
   document.body.append(parts.licenseRoot);
@@ -202,9 +305,14 @@ function buildPage(root) {
         el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern'))),
       el('p', { class: 'muted' }, t('Hierhin speichert Vitool Downloads und Ergebnisse aus Links.')),
     ),
+    parts.signInCard,
     el('section', { class: 'card stack' },
       el('h2', {}, t('Programme')),
       parts.tools,
+      el('div', { class: 'folder-row' },
+        el('label', { class: 'check' }, parts.autoUpdate, el('span', {}, t('yt-dlp automatisch aktualisieren'))),
+        parts.ytdlpStatus),
+      parts.autoHint,
       el('p', { class: 'muted' }, t('Wenn Downloads plötzlich scheitern, hilft meist ein Update von yt-dlp: Die Seiten ändern sich oft.')),
     ),
     el('section', { class: 'card stack' },
@@ -229,7 +337,7 @@ export default {
   label: t('Einstellungen'),
   bottom: true,
   mount: buildPage,
-  async onShow() {
+  async onShow(data) {
     settings = await invoke('settings:get');
     parts.folder.textContent = settings.downloadDir;
     parts.folder.title = settings.downloadDir;
@@ -238,6 +346,14 @@ export default {
     parts.dataFolder.textContent = info.userData;
     parts.dataFolder.title = info.userData;
     renderTools();
+    renderYtdlp(await invoke('ytdlp:status'));
+    renderSignIn(await invoke('signin:status'));
     renderUpdate(await invoke('update:status'));
+    // Aus einer Fehlermeldung heraus geöffnet: gleich zur Anmeldung.
+    if (data?.section === 'signin') {
+      parts.signInCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      parts.signInCard.classList.remove('flash');
+      requestAnimationFrame(() => parts.signInCard.classList.add('flash'));
+    }
   },
 };

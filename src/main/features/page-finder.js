@@ -2,6 +2,7 @@
 // und Vitool merkt sich die Videoadressen, die der Player beim Abspielen lädt.
 const { BrowserWindow, session } = require('electron');
 const { t } = require('../core/i18n');
+const { plainUserAgent } = require('../core/sign-in');
 
 // Ohne "persist:" bleiben Anmeldungen und Cookies nur bis zum Beenden im Speicher.
 const PARTITION = 'vitool-page-finder';
@@ -55,11 +56,6 @@ function describe(url) {
   } catch {
     return { host: '', name: url.slice(0, 60) };
   }
-}
-
-// Vitool und Electron stehen sonst in der Browserkennung, und manche Seiten liefern dann nichts aus.
-function plainUserAgent(agent) {
-  return agent.split(' ').filter((part) => !/^(electron|vitool)\//i.test(part)).join(' ');
 }
 
 function createPageFinder({ send }) {

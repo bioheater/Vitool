@@ -4,7 +4,6 @@ const os = require('os');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const { BrowserWindow, session } = require('electron');
-const { run } = require('../core/process-runner');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { concatFiles } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
@@ -223,7 +222,7 @@ function installPreviewHeaders() {
   };
 }
 
-function register({ ipcMain, queue, store, tools, send }) {
+function register({ ipcMain, queue, store, tools, send, ytdlp }) {
   const setPreviewSource = installPreviewHeaders();
   const finder = createPageFinder({ send });
   const getHistory = () => store.get('history');
@@ -241,6 +240,13 @@ function register({ ipcMain, queue, store, tools, send }) {
     let finishedSections = 0;
     let stream = 0;
     let lastValue = 0;
+    // Ein neuer Versuch beginnt bei null, sonst stimmen Dateiliste und Fortschritt nicht.
+    const reset = () => {
+      files.length = 0;
+      finishedSections = 0;
+      stream = 0;
+      lastValue = 0;
+    };
 
     // Bei Abschnitten meldet yt-dlp nur das Ende eines Teils, die Zwischenstände kommen von FFmpeg.
     const onSectionProgress = (finishedPart) => {
@@ -289,7 +295,16 @@ function register({ ipcMain, queue, store, tools, send }) {
 
     try {
       job.update({ detail: options.sections.length ? t('Lädt Abschnitte …') : t('Lädt …') });
-      await run(tools.path('ytdlp'), buildArgs(options, tools, tempDir), { onLine, signal: job.signal });
+      await ytdlp.run(buildArgs(options, tools, tempDir), {
+        onLine,
+        signal: job.signal,
+        // Streams von einer gefundenen Seite bringen ihre eigenen Cookies mit.
+        signIn: !options.pageUrl,
+        onStatus: (detail, retrying) => {
+          if (retrying) reset();
+          job.update({ detail, progress: null });
+        },
+      });
       if (files.length === 0) throw new Error(t('Keine Datei erhalten'));
 
       let results = files;
@@ -321,7 +336,7 @@ function register({ ipcMain, queue, store, tools, send }) {
   async function readInfo(url, source = null) {
     if (!/^https?:\/\//i.test(url ?? '')) throw new UserError(t('Bitte gib einen gültigen Link ein.'));
     const args = [...commonArgs(tools), ...headerArgs(source?.headers), '-J', '--no-warnings', '--playlist-items', '1', '--', url];
-    const { stdout } = await run(tools.path('ytdlp'), args);
+    const { stdout } = await ytdlp.run(args, { signIn: !source });
     const info = normalizeInfo(JSON.parse(stdout), url);
     if (source) {
       // Der Stream heißt meist nur "master" oder "index", die Seite hat den lesbaren Titel.
@@ -337,7 +352,7 @@ function register({ ipcMain, queue, store, tools, send }) {
     } catch (error) {
       // Kennt yt-dlp die Seite nicht, kann Vitool das Video noch beim Abspielen auf der Seite finden.
       const canSearchPage = /unsupported url/i.test(String(error?.message)) || error?.noVideo === true;
-      return { ok: false, error: toGermanMessage(error), canSearchPage };
+      return { ok: false, error: toGermanMessage(error), canSearchPage, fix: error?.fix ?? null };
     }
   });
 
@@ -380,10 +395,10 @@ function register({ ipcMain, queue, store, tools, send }) {
       if (!/^https?:\/\//i.test(url ?? '')) throw new UserError(t('Bitte gib einen gültigen Link ein.'));
       const base = commonArgs(tools).filter((arg) => arg !== '--no-playlist');
       const args = [...base, '-J', '--flat-playlist', '--yes-playlist', '--no-warnings', '--', url];
-      const { stdout } = await run(tools.path('ytdlp'), args);
+      const { stdout } = await ytdlp.run(args);
       return { ok: true, playlist: normalizePlaylist(JSON.parse(stdout), url) };
     } catch (error) {
-      return { ok: false, error: toGermanMessage(error) };
+      return { ok: false, error: toGermanMessage(error), fix: error?.fix ?? null };
     }
   });
 

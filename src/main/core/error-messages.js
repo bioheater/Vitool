@@ -12,7 +12,7 @@ const RULES = [
   [/private video|this video is private/i, t('Dieses Video ist privat und kann nicht geladen werden.')],
   [/members.only|join this channel/i, t('Dieses Video ist nur für Kanalmitglieder verfügbar.')],
   [/not available in your country|geo.?restrict|blocked it in your country/i, t('Dieses Video ist in deinem Land nicht verfügbar.')],
-  [/video unavailable|has been removed|does not exist|http error 404/i, t('Dieses Video ist nicht mehr verfügbar.')],
+  [/video unavailable|video is unavailable|has been removed|does not exist|http error 404/i, t('Dieses Video ist nicht mehr verfügbar.')],
   [/requested format is not available|no video formats found/i, t('Die gewählte Qualität ist für dieses Video nicht verfügbar. Wähle bitte eine andere.')],
   [/http error 429|too many requests/i, t('Die Seite hat vorübergehend zu viele Anfragen erhalten. Warte ein paar Minuten und versuche es erneut.')],
   [/http error 403|forbidden/i, t('Die Seite hat den Zugriff verweigert. Versuche es später noch einmal.')],

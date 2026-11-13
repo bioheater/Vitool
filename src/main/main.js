@@ -17,7 +17,9 @@ if (IS_DEV) app.setPath('userData', path.join(app.getPath('appData'), 'Vitool-De
 const { Store } = require('./core/store');
 const { JobQueue } = require('./core/job-queue');
 const { ToolChecker } = require('./core/tools-check');
-const { installTools, updateYtDlp } = require('./core/tool-installer');
+const { installTools } = require('./core/tool-installer');
+const { YtDlp } = require('./core/ytdlp');
+const { createSignIn } = require('./core/sign-in');
 const { setupUpdater } = require('./core/updater');
 const { CanceledError } = require('./core/process-runner');
 const { toGermanMessage } = require('./core/error-messages');
@@ -147,11 +149,16 @@ app.whenReady().then(() => {
     settings: {
       downloadDir: app.getPath('downloads'),
       openInCut: false,
+      ytdlpAutoUpdate: true,
+      signInUse: 'needed',
     },
     history: [],
   });
   const queue = new JobQueue();
   const tools = new ToolChecker();
+  const signIn = createSignIn({ send, store });
+  const ytdlp = new YtDlp({ tools, store, signIn, send });
+  ytdlp.startDailyCheck();
 
   queue.on('change', (jobs) => send('queue:update', jobs));
   setupUpdater({ ipcMain, send, queue });
@@ -217,19 +224,17 @@ app.whenReady().then(() => {
       return { ok: false, error: toGermanMessage(error) };
     }
   });
-  ipcMain.handle('tools:updateYtDlp', async () => {
-    try {
-      const message = await updateYtDlp();
-      await tools.check();
-      return { ok: true, message };
-    } catch (error) {
-      return { ok: false, error: toGermanMessage(error) };
-    }
-  });
+  ipcMain.handle('tools:updateYtDlp', () => ytdlp.updateNow());
+  ipcMain.handle('ytdlp:status', () => ytdlp.getStatus());
+  ipcMain.handle('signin:status', () => signIn.status());
+  ipcMain.handle('signin:open', (event) => signIn.open(BrowserWindow.fromWebContents(event.sender)));
+  ipcMain.handle('signin:signOut', () => signIn.signOut());
   ipcMain.handle('settings:get', () => store.get('settings'));
   ipcMain.handle('settings:set', (_event, patch) => {
     const settings = { ...store.get('settings'), ...patch };
     store.set('settings', settings);
+    if ('ytdlpAutoUpdate' in patch) send('ytdlp:status', ytdlp.getStatus());
+    if ('signInUse' in patch) signIn.report();
     return settings;
   });
   ipcMain.handle('dialog:pickFolder', async (_event, currentPath) => {
@@ -288,7 +293,7 @@ app.whenReady().then(() => {
   ipcMain.handle('queue:cancel', (_event, id) => queue.cancel(id));
   ipcMain.handle('queue:clearFinished', () => queue.clearFinished());
 
-  const context = { ipcMain, queue, store, tools, send };
+  const context = { ipcMain, queue, store, tools, send, ytdlp };
   features.forEach((feature) => feature.register(context));
 
   createWindow();

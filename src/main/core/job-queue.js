@@ -28,6 +28,7 @@ class JobQueue extends EventEmitter {
       progress: null,
       detail: t('Wartet …'),
       error: null,
+      fix: null,
       resultPath: null,
       run,
       controller: null,
@@ -88,6 +89,8 @@ class JobQueue extends EventEmitter {
         this.finish(job, 'canceled', t('Abgebrochen'));
       } else {
         job.error = toGermanMessage(error);
+        // Ein Knopf zum Beheben, etwa "yt-dlp aktualisieren" oder "Anmelden".
+        job.fix = error?.fix ?? null;
         this.finish(job, 'failed', t('Fehlgeschlagen'));
       }
     }

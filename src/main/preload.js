@@ -5,6 +5,10 @@ const INVOKE_CHANNELS = [
   'tools:check',
   'tools:install',
   'tools:updateYtDlp',
+  'ytdlp:status',
+  'signin:status',
+  'signin:open',
+  'signin:signOut',
   'update:status',
   'update:check',
   'update:download',
@@ -83,7 +87,7 @@ const INVOKE_CHANNELS = [
   'app:setTitleBar',
 ];
 
-const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'download:pageMedia', 'mkv:syncProgress', 'mkv:loudnessProgress', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged', 'update:status'];
+const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'download:pageMedia', 'mkv:syncProgress', 'mkv:loudnessProgress', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged', 'update:status', 'ytdlp:status', 'signin:status'];
 
 contextBridge.exposeInMainWorld('vitool', {
   invoke(channel, ...args) {

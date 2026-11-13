@@ -1819,3 +1819,52 @@ body {
   background: var(--well);
   width: 128px;
 }
+
+/* Knopf neben einer Fehlermeldung */
+.message .fix-row,
+.job-error .fix-row {
+  align-items: center;
+  display: inline-flex;
+  gap: 10px;
+  margin-left: 10px;
+}
+
+.job-error .fix-row .muted {
+  color: var(--muted);
+}
+
+/* Hinweise und Risiken vor der Anmeldung */
+.risk-box {
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius-small);
+  padding: 10px 14px;
+}
+
+.risk-box ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+}
+
+.risk-box li + li {
+  margin-top: 4px;
+}
+
+.card.flash {
+  animation: card-flash 1.6s ease-out;
+}
+
+@keyframes card-flash {
+  0%,
+  30% {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+
+  100% {
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
+.risk-box ul {
+  list-style: disc;
+}

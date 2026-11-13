@@ -3,6 +3,7 @@
 import { el } from '../utils/dom.js';
 import { isMediaFile } from '../utils/navigation.js';
 import { createSendTo } from './send-to.js';
+import { fixButton } from './error-fix.js';
 import { t } from '../utils/i18n.js';
 
 const STATUS_CLASS = { done: 'ok', failed: 'bad', canceled: 'muted' };
@@ -36,7 +37,13 @@ function updateRow(row, job) {
   row.fill.style.width = unknown ? '' : `${value}%`;
   if (unknown) row.bar.removeAttribute('aria-valuenow');
   else row.bar.setAttribute('aria-valuenow', String(Math.round(value)));
-  row.error.textContent = job.error ?? '';
+  // Nur neu aufbauen, wenn sich etwas ändert. Sonst entstünde der Knopf bei jedem Fortschritt anderer Aufgaben neu.
+  const errorKey = `${job.error ?? ''}|${job.fix ?? ''}`;
+  if (row.errorKey !== errorKey) {
+    row.errorKey = errorKey;
+    const button = job.fix ? fixButton(job.fix, { doneText: t('Erledigt. Starte den Download bitte noch einmal.') }) : null;
+    row.error.replaceChildren(el('span', {}, job.error ?? ''), ...(button ? [' ', button] : []));
+  }
   row.error.hidden = !job.error;
 
   if (row.status === job.status) return;
