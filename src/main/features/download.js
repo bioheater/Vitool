@@ -5,6 +5,7 @@ const path = require('path');
 const { randomUUID } = require('crypto');
 const { BrowserWindow, session } = require('electron');
 const { UserError, toGermanMessage } = require('../core/error-messages');
+const { run, CanceledError } = require('../core/process-runner');
 const { concatFiles } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
 const { t } = require('../core/i18n');
@@ -14,6 +15,21 @@ const FILE_MARKER = 'VITOOLFILE|';
 const PROGRESS_MARKER = 'VITOOLPROGRESS|';
 const HISTORY_LIMIT = 200;
 const SECTION_REQUEST_BYTES = 5_000_000;
+const SUBTITLE_LIMIT = 5;
+// Viele Server drosseln jede einzelne Verbindung. Streams aus Stücken laden mit vier gleichzeitig deutlich schneller.
+const FRAGMENTS_AT_ONCE = 4;
+const URL_PATTERN = /https?:\/\/[^\s"'<>]+/gi;
+
+// yt-dlp kennt die Seite nicht. Dann kann Vitool das Video noch beim Abspielen auf der Seite finden.
+function pageUnknown(error) {
+  return /unsupported url/i.test(String(error?.message ?? error)) || error?.noVideo === true;
+}
+
+// Links aus eingefügtem Text oder einer Textdatei. Satzzeichen am Ende gehören nicht dazu.
+function extractUrls(text) {
+  const urls = (String(text ?? '').match(URL_PATTERN) ?? []).map((url) => url.replace(/[).,;:!?\]]+$/, ''));
+  return [...new Set(urls)];
+}
 
 function secondsToTime(value) {
   const total = Math.max(0, value);
@@ -117,6 +133,36 @@ function normalizePlaylist(raw, url) {
   };
 }
 
+// Ohne lesbaren Namen zeigt die Liste Seite und Ende des Links, etwa "example.org › 2387".
+function shortUrl(url) {
+  try {
+    const { hostname, pathname } = new URL(url);
+    const last = decodeURIComponent(pathname.split('/').filter(Boolean).pop() ?? '');
+    return last ? `${hostname.replace(/^www\./, '')} › ${last}` : hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+// Eine Liste einzelner Seiten sieht aus wie eine Playlist. Kam der Name vom Link, bleibt er beim Download erhalten.
+function linkList(entries, title, url = null) {
+  return {
+    url,
+    title,
+    uploader: null,
+    source: 'links',
+    entries: entries.map((entry, index) => ({
+      index: index + 1,
+      url: entry.url,
+      title: entry.title || titleFromUrl(entry.url) || shortUrl(entry.url) || t('Video {number}', { number: index + 1 }),
+      namedByLink: Boolean(entry.title),
+      duration: null,
+      thumbnail: entry.thumbnail ?? null,
+      available: true,
+    })),
+  };
+}
+
 function safeFolderName(name) {
   return name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/[. ]+$/, '').trim().slice(0, 120) || 'Playlist';
 }
@@ -155,6 +201,7 @@ function buildArgs(options, tools, tempDir) {
   sections.forEach(({ start, end }) => {
     args.push('--download-sections', `*${secondsToTime(start)}-${secondsToTime(end)}`);
   });
+  if (!hasSections) args.push('--concurrent-fragments', String(FRAGMENTS_AT_ONCE));
   // YouTube drosselt lange Anfragen stark, in kleinen Stücken lädt FFmpeg mit voller Geschwindigkeit.
   if (hasSections) args.push('--downloader-args', `ffmpeg_i:-request_size ${SECTION_REQUEST_BYTES}`);
   if (hasSections && exact) args.push('--force-keyframes-at-cuts');
@@ -226,6 +273,49 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
   const setPreviewSource = installPreviewHeaders();
   const finder = createPageFinder({ send });
   const getHistory = () => store.get('history');
+  let probeController = null;
+
+  // Kennt yt-dlp eine Seite aus einer Liste nicht, sucht Vitool das Video unsichtbar auf der Seite.
+  async function findOnPage(options, job) {
+    job.update({ detail: t('Sucht das Video auf der Seite …'), progress: null });
+    const { source } = await finder.probe(options.url, { signal: job.signal });
+    if (!source) {
+      const error = new UserError(t('Vitool hat auf dieser Seite kein Video gefunden. Öffne die Seite und starte es selbst.'));
+      error.fix = { kind: 'page', url: options.url };
+      throw error;
+    }
+    const title = options.namedByLink ? options.title : source.title || options.title;
+    job.update({ title });
+    return { ...options, url: source.url, headers: source.headers, pageUrl: options.url, title, subtitles: source.subtitles };
+  }
+
+  // Untertitel, die der Player geladen hat, landen als SRT neben dem Video. Klappt die Umwandlung nicht, bleibt es VTT.
+  async function saveSubtitles(list, videoPath, tempDir, signal) {
+    const saved = [];
+    const { name } = path.parse(videoPath);
+    for (const [index, item] of list.slice(0, SUBTITLE_LIMIT).entries()) {
+      try {
+        const response = await fetch(item.url, { headers: item.headers ?? {}, signal });
+        if (!response.ok) continue;
+        const text = await response.text();
+        const base = path.join(tempDir, `${name}${index ? `.${index + 1}` : ''}`);
+        let file = `${base}.${/^\s*WEBVTT/.test(text) ? 'vtt' : 'srt'}`;
+        await fs.writeFile(file, text);
+        if (file.endsWith('.vtt')) {
+          try {
+            await run(tools.path('ffmpeg'), ['-y', '-loglevel', 'error', '-i', file, `${base}.srt`], { signal });
+            file = `${base}.srt`;
+          } catch (error) {
+            if (signal?.aborted) throw error;
+          }
+        }
+        saved.push(await moveFile(file, path.dirname(videoPath)));
+      } catch (error) {
+        if (signal?.aborted) throw new CanceledError();
+      }
+    }
+    return saved;
+  }
 
   function addHistory(entry) {
     store.set('history', [entry, ...getHistory()].slice(0, HISTORY_LIMIT));
@@ -235,17 +325,19 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
   async function runDownload(options, job) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-'));
     const sectionCount = options.sections.length;
-    const streamCount = options.mode === 'video' ? 2 : 1;
     const files = [];
     let finishedSections = 0;
-    let stream = 0;
-    let lastValue = 0;
+    // Wie viele Teile yt-dlp lädt (Video und Ton getrennt oder zusammen) und beim wievielten es ist.
+    let streamCount = 1;
+    let stream = -1;
+    let shown = 0;
     // Ein neuer Versuch beginnt bei null, sonst stimmen Dateiliste und Fortschritt nicht.
     const reset = () => {
       files.length = 0;
       finishedSections = 0;
-      stream = 0;
-      lastValue = 0;
+      streamCount = 1;
+      stream = -1;
+      shown = 0;
     };
 
     // Bei Abschnitten meldet yt-dlp nur das Ende eines Teils, die Zwischenstände kommen von FFmpeg.
@@ -265,18 +357,21 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
       onSectionProgress(Math.min(seconds / (section.end - section.start), 1));
     };
 
-    // Video und Tonspur kommen getrennt, deshalb laufen die Prozente zweimal bis 100.
+    // Kommen Video und Ton getrennt, laufen die Prozente zweimal bis 100. Bei Streams aus vielen Stücken
+    // schätzt yt-dlp die Größe laufend neu, die Prozente fallen dann kurz zurück. Der Balken bleibt trotzdem stehen.
     const onStreamProgress = (value, speed, eta) => {
-      if (value < lastValue) stream = Math.min(stream + 1, streamCount - 1);
-      lastValue = value;
       const remaining = eta && eta !== 'Unknown' ? t('noch {time}', { time: eta }) : '';
+      shown = Math.max(shown, ((Math.max(stream, 0) + value / 100) / streamCount) * 100);
       job.update({
-        progress: ((stream + value / 100) / streamCount) * 100,
+        progress: shown,
         detail: [t('Lädt'), speed.trim().replace('Unknown B/s', ''), remaining].filter(Boolean).join(' · '),
       });
     };
 
     const onLine = (line) => {
+      const formats = /Downloading d+ format(s): (S+)/.exec(line);
+      if (formats) streamCount = formats[1].split('+').length;
+      if (line.startsWith('[download] Destination:')) stream = Math.min(stream + 1, streamCount - 1);
       if (line.startsWith(FILE_MARKER)) {
         files.push(line.slice(FILE_MARKER.length).trim());
       } else if (line.startsWith(PROGRESS_MARKER)) {
@@ -293,18 +388,29 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
       }
     };
 
+    const download = (current) => ytdlp.run(buildArgs(current, tools, tempDir), {
+      onLine,
+      signal: job.signal,
+      // Streams von einer gefundenen Seite bringen ihre eigenen Cookies mit.
+      signIn: !current.pageUrl,
+      onStatus: (detail, retrying) => {
+        if (retrying) reset();
+        job.update({ detail, progress: null });
+      },
+    });
+
+    let current = options;
     try {
       job.update({ detail: options.sections.length ? t('Lädt Abschnitte …') : t('Lädt …') });
-      await ytdlp.run(buildArgs(options, tools, tempDir), {
-        onLine,
-        signal: job.signal,
-        // Streams von einer gefundenen Seite bringen ihre eigenen Cookies mit.
-        signIn: !options.pageUrl,
-        onStatus: (detail, retrying) => {
-          if (retrying) reset();
-          job.update({ detail, progress: null });
-        },
-      });
+      try {
+        await download(current);
+      } catch (error) {
+        if (current.pageUrl || !pageUnknown(error) || job.signal.aborted) throw error;
+        current = await findOnPage(options, job);
+        reset();
+        job.update({ detail: t('Lädt …') });
+        await download(current);
+      }
       if (files.length === 0) throw new Error(t('Keine Datei erhalten'));
 
       let results = files;
@@ -316,12 +422,17 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
 
       const saved = [];
       for (const file of results) saved.push(await moveFile(file, options.folder));
+      // Zu einem Abschnitt passen die Zeiten der Untertitel nicht, sie gelten für das ganze Video.
+      if (current.mode !== 'audio' && !current.sections.length && current.subtitles?.length) {
+        job.update({ detail: t('Lädt Untertitel …'), progress: null });
+        saved.push(...await saveSubtitles(current.subtitles, saved[0], tempDir, job.signal));
+      }
 
       addHistory({
         id: randomUUID(),
-        title: options.title,
+        title: current.title,
         thumbnail: options.thumbnail ?? null,
-        url: options.pageUrl ?? options.url,
+        url: current.pageUrl ?? options.url,
         mode: options.mode,
         files: saved,
         date: new Date().toISOString(),
@@ -340,7 +451,13 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
     const info = normalizeInfo(JSON.parse(stdout), url);
     if (source) {
       // Der Stream heißt meist nur "master" oder "index", die Seite hat den lesbaren Titel.
-      Object.assign(info, { title: source.title || info.title, headers: source.headers, pageUrl: source.pageUrl, playlist: null });
+      Object.assign(info, {
+        title: source.title || info.title,
+        headers: source.headers,
+        pageUrl: source.pageUrl,
+        subtitles: source.subtitles ?? [],
+        playlist: null,
+      });
     }
     setPreviewSource(info);
     return info;
@@ -350,10 +467,37 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
     try {
       return { ok: true, info: await readInfo(url) };
     } catch (error) {
-      // Kennt yt-dlp die Seite nicht, kann Vitool das Video noch beim Abspielen auf der Seite finden.
-      const canSearchPage = /unsupported url/i.test(String(error?.message)) || error?.noVideo === true;
-      return { ok: false, error: toGermanMessage(error), canSearchPage, fix: error?.fix ?? null };
+      return { ok: false, error: toGermanMessage(error), canSearchPage: pageUnknown(error), fix: error?.fix ?? null };
     }
+  });
+
+  // Erst unsichtbar suchen. Findet Vitool kein Video, aber viele gleichartige Links, ist es wohl eine Übersicht.
+  ipcMain.handle('download:probe', async (_event, url) => {
+    probeController?.abort();
+    const controller = new AbortController();
+    probeController = controller;
+    try {
+      if (!/^https?:\/\//i.test(url ?? '')) throw new UserError(t('Bitte gib einen gültigen Link ein.'));
+      const result = await finder.probe(url, { signal: controller.signal, links: true });
+      const info = result.source ? await readInfo(result.source.url, result.source) : null;
+      // Auf einer Seite mit Video sind gleichartige Links meist nur das Menü, nicht weitere Folgen.
+      const links = !info && result.links.length ? linkList(result.links, result.title || t('Linkliste'), url) : null;
+      return { ok: true, info, links };
+    } catch (error) {
+      if (error instanceof CanceledError) return { ok: false, canceled: true };
+      return { ok: false, error: toGermanMessage(error) };
+    } finally {
+      if (probeController === controller) probeController = null;
+    }
+  });
+
+  ipcMain.handle('download:cancelProbe', () => probeController?.abort());
+
+  // Mehrere eingefügte Links oder der Inhalt einer Textdatei.
+  ipcMain.handle('download:links', (_event, text) => {
+    const urls = extractUrls(text);
+    if (urls.length === 0) return { ok: false, error: t('In diesem Text wurde kein Link gefunden.') };
+    return { ok: true, playlist: linkList(urls.map((url) => ({ url })), t('Linkliste')) };
   });
 
   ipcMain.handle('download:findOnPage', (event, url) => {
@@ -413,6 +557,7 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
         const single = {
           url: entry.url,
           title: entry.title,
+          namedByLink: Boolean(entry.namedByLink),
           thumbnail: entry.thumbnail,
           duration: entry.duration,
           mode: options.mode,
@@ -439,4 +584,4 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
   });
 }
 
-module.exports = { register, buildArgs, normalizeInfo, commonArgs };
+module.exports = { register, buildArgs, normalizeInfo, commonArgs, extractUrls, linkList };

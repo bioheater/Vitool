@@ -24,6 +24,11 @@ export function fixButton(fix, { onDone, doneText } = {}) {
     return el('span', { class: 'fix-row' },
       el('button', { class: 'button small', onclick: () => openPage('settings', { section: 'signin' }) }, t('Anmelden …')));
   }
+  // Die unsichtbare Suche hat nichts gefunden. Im sichtbaren Fenster startet man das Video selbst.
+  if (fix?.kind === 'page') {
+    return el('span', { class: 'fix-row' },
+      el('button', { class: 'button small', onclick: () => openPage('download', { findOnPage: fix.url }) }, t('Seite öffnen …')));
+  }
   const entry = FIXES[fix];
   if (!entry) return null;
   const note = el('span', { class: 'muted' });

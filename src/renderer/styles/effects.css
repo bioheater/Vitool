@@ -1962,3 +1962,59 @@ body {
   margin: 0;
   padding-left: 18px;
 }
+
+/* Läuft, während Vitool eine Seite unsichtbar nach dem Video durchsucht. */
+.spinner {
+  animation: spin 0.9s linear infinite;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  border-top-color: var(--accent);
+  display: inline-block;
+  height: 16px;
+  width: 16px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 3s;
+  }
+}
+
+/* Eine Textdatei oder ein Link wird über den Download-Bereich gezogen. */
+.page-drop {
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  backdrop-filter: blur(3px);
+  padding: 16px;
+  pointer-events: none;
+  position: fixed;
+  z-index: 40;
+}
+
+.page-drop-inner {
+  align-items: center;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 40px color-mix(in srgb, var(--accent) 18%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  justify-content: center;
+  text-align: center;
+}
+
+.page-drop-inner .icon {
+  color: var(--accent);
+  height: 40px;
+  width: 40px;
+}
+
+.page-drop-inner strong {
+  font-size: 18px;
+}

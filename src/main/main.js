@@ -150,6 +150,7 @@ app.whenReady().then(() => {
     settings: {
       downloadDir: app.getPath('downloads'),
       openInCut: false,
+      playlistSubfolder: true,
       ytdlpAutoUpdate: true,
       signInUse: 'needed',
     },

@@ -32,17 +32,31 @@ function setMessage(text, fix = null, retry = null) {
   parts.message.hidden = !text;
 }
 
-async function loadInfo() {
-  const url = parts.url.value.trim();
-  if (!url) return;
+// Mehr als ein Link im Feld oder in einer Textdatei wird eine Liste.
+function countUrls(text) {
+  return new Set(String(text ?? '').match(/https?:\/\/[^\s"'<>]+/gi) ?? []).size;
+}
 
-  parts.load.disabled = true;
-  parts.load.textContent = t('Lädt …');
+function hideResults() {
   parts.result.hidden = true;
   parts.playlistView.hidden = true;
   parts.playlistNote.hidden = true;
   parts.finder.hidden = true;
   setMessage('');
+}
+
+async function loadInfo() {
+  const url = parts.url.value.trim();
+  if (!url) return;
+  if (countUrls(url) > 1) {
+    loadLinks(url);
+    return;
+  }
+
+  cancelSearch();
+  parts.load.disabled = true;
+  parts.load.textContent = t('Lädt …');
+  hideResults();
   // Der eingefügte Link enthält die Playlist, die Videoinfo nur noch das einzelne Video.
   state.pastedUrl = url;
 
@@ -51,13 +65,93 @@ async function loadInfo() {
   parts.load.disabled = false;
   parts.load.textContent = t('Prüfen');
   if (!response.ok) {
-    if (response.canSearchPage) offerFinder(url);
+    if (response.canSearchPage) searchPage(url);
     else setMessage(response.error, response.fix, loadInfo);
     return;
   }
   // Ein reiner Playlist-Link zeigt gleich die Liste, ein einzelnes Video daraus bietet sie an.
   if (response.info.playlist === 'only') loadPlaylist(url);
   else showInfo(response.info);
+}
+
+async function loadLinks(text) {
+  cancelSearch();
+  hideResults();
+  const response = await invoke('download:links', text);
+  if (!response.ok) {
+    setMessage(response.error);
+    return;
+  }
+  parts.url.value = '';
+  state.info = null;
+  showPlaylist(response.playlist);
+}
+
+// Zieht man eine Datei oder einen Link über den Inhaltsbereich, deckt eine Ablagefläche ihn ganz ab.
+// Die Seitenleiste bleibt frei. Der Bereich ist größer als die Seite selbst, wenn sie wenig Inhalt hat.
+function setupDrop(root) {
+  const area = root.parentElement;
+  const overlay = el('div', { class: 'page-drop', hidden: true, 'aria-hidden': 'true' },
+    el('div', { class: 'page-drop-inner' },
+      icon(ICONS.download),
+      el('strong', {}, t('Hier loslassen, um die Links zu laden')),
+      el('span', { class: 'muted' }, t('Eine Textdatei mit Links oder ein Link aus dem Browser')))
+  );
+  document.body.append(overlay);
+  let depth = 0;
+  const active = (event) => !root.hidden
+    && [...(event.dataTransfer?.types ?? [])].some((type) => ['Files', 'text/plain', 'text/uri-list'].includes(type));
+  const show = (visible) => {
+    if (visible) {
+      const { top, left, width, height } = area.getBoundingClientRect();
+      Object.assign(overlay.style, { top: `${top}px`, left: `${left}px`, width: `${width}px`, height: `${height}px` });
+    }
+    overlay.hidden = !visible;
+  };
+  area.addEventListener('dragenter', (event) => {
+    if (!active(event)) return;
+    depth += 1;
+    show(true);
+  });
+  area.addEventListener('dragleave', () => {
+    depth = Math.max(0, depth - 1);
+    if (depth === 0) show(false);
+  });
+  area.addEventListener('dragover', (event) => {
+    if (!active(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+  });
+  area.addEventListener('drop', (event) => {
+    depth = 0;
+    show(false);
+    if (active(event)) onDrop(event);
+  });
+}
+
+// Eine Textdatei mit Links oder ein Link, der aus dem Browser hierher gezogen wird.
+async function onDrop(event) {
+  event.preventDefault();
+  const file = [...(event.dataTransfer?.files ?? [])].find((entry) => /\.(txt|csv|url|list)$/i.test(entry.name) || entry.type.startsWith('text/'));
+  const text = file ? await file.text() : event.dataTransfer?.getData('text/uri-list') || event.dataTransfer?.getData('text/plain');
+  if (!text) return;
+  if (file || countUrls(text) > 1) {
+    loadLinks(text);
+    return;
+  }
+  parts.url.value = text.trim();
+  loadInfo();
+}
+
+function onPaste(event) {
+  const text = event.clipboardData?.getData('text') ?? '';
+  // Ein Eingabefeld hat nur eine Zeile und würde mehrere Links aneinanderhängen.
+  if (countUrls(text) > 1) {
+    event.preventDefault();
+    loadLinks(text);
+    return;
+  }
+  setTimeout(loadInfo);
 }
 
 async function loadPlaylist(url) {
@@ -73,10 +167,16 @@ async function loadPlaylist(url) {
     setMessage(response.error, response.fix, () => loadPlaylist(url));
     return;
   }
+  showPlaylist(response.playlist);
+}
+
+// Der Haken für den eigenen Unterordner gilt für alle Listen und bleibt, wie man ihn zuletzt gesetzt hat.
+function showPlaylist(playlist) {
   stopPreview();
   parts.playlistNote.hidden = true;
   parts.plStatus.hidden = true;
-  state.playlist = response.playlist;
+  parts.plSubfolder.checked = state.settings.playlistSubfolder !== false;
+  state.playlist = playlist;
   state.playlist.entries.forEach((entry) => {
     entry.selected = entry.available;
   });
@@ -88,21 +188,26 @@ async function loadPlaylist(url) {
 function closePlaylist() {
   state.playlist = null;
   parts.playlistView.hidden = true;
-  const single = state.info && state.info.playlist === 'member';
-  parts.result.hidden = !single;
-  parts.playlistNote.hidden = !single;
+  parts.result.hidden = !state.info;
+  renderNote();
+}
+
+function renderNote() {
+  parts.playlistNote.hidden = Boolean(state.playlist) || state.info?.playlist !== 'member';
 }
 
 function renderPlaylist() {
   const { playlist } = state;
   const selected = playlist.entries.filter((entry) => entry.selected);
   const unavailable = playlist.entries.filter((entry) => !entry.available).length;
+  const count = playlist.entries.length;
   parts.playlistTitle.textContent = playlist.title;
   parts.playlistMeta.textContent = [
     playlist.uploader,
-    t('{count} Videos', { count: playlist.entries.length }),
+    playlist.source === 'links' ? (count === 1 ? t('1 Link') : t('{count} Links', { count })) : t('{count} Videos', { count }),
     unavailable ? t('{count} nicht verfügbar', { count: unavailable }) : null,
   ].filter(Boolean).join(' · ');
+  parts.playlistLinksNote.hidden = playlist.source !== 'links';
   parts.playlistList.replaceChildren(...playlist.entries.map((entry) => {
     const check = el('input', {
       type: 'checkbox',
@@ -118,7 +223,7 @@ function renderPlaylist() {
       el('label', { class: `playlist-row ${entry.available ? '' : 'unavailable'}` },
         check,
         el('span', { class: 'muted playlist-index' }, String(entry.index)),
-        el('span', { class: 'playlist-name', title: entry.title }, entry.title),
+        el('span', { class: 'playlist-name', title: entry.url ?? entry.title }, entry.title),
         el('span', { class: 'muted' }, entry.duration ? formatTime(entry.duration) : '')));
   }));
   const audio = state.playlistMode === 'audio';
@@ -151,7 +256,7 @@ async function startPlaylist() {
   const { playlist } = state;
   const entries = playlist.entries.filter((entry) => entry.selected);
   const response = await invoke('download:playlistStart', {
-    entries: entries.map(({ url, title, thumbnail, duration }) => ({ url, title, thumbnail, duration })),
+    entries: entries.map(({ url, title, thumbnail, duration, namedByLink }) => ({ url, title, thumbnail, duration, namedByLink })),
     mode: state.playlistMode,
     height: Number(parts.plQuality.value) || null,
     folder: state.settings.downloadDir,
@@ -169,18 +274,59 @@ async function startPlaylist() {
   parts.plStatus.hidden = false;
 }
 
-// yt-dlp kennt nicht jede Seite. Dann öffnet Vitool sie in einem eigenen Fenster und
-// merkt sich die Videoadressen, die der Player dort beim Abspielen lädt.
-function offerFinder(url) {
-  state.finder = { url, open: false, items: [] };
+// yt-dlp kennt nicht jede Seite. Dann öffnet Vitool sie erst unsichtbar, startet das Video stumm
+// und merkt sich den Stream. Klappt das nicht, öffnet man die Seite sichtbar und startet das Video selbst.
+async function searchPage(url) {
+  state.finder = { url, open: false, items: [], searching: true };
   renderFinder();
   parts.finder.hidden = false;
+  const response = await invoke('download:probe', url);
+  if (state.finder.url !== url || !state.finder.searching) return;
+  state.finder.searching = false;
+  if (response.canceled) return;
+  if (!response.ok) {
+    state.finder.failed = true;
+    renderFinder();
+    setMessage(response.error);
+    return;
+  }
+  if (response.info) {
+    parts.finder.hidden = true;
+    showInfo(response.info);
+  } else if (response.links) {
+    parts.finder.hidden = true;
+    showPlaylist(response.links);
+  } else {
+    state.finder.failed = true;
+    renderFinder();
+  }
+}
+
+function cancelSearch() {
+  if (!state.finder.searching) return;
+  state.finder.searching = false;
+  invoke('download:cancelProbe');
 }
 
 async function openFinder() {
   setMessage('');
+  cancelSearch();
+  renderFinder();
   const response = await invoke('download:findOnPage', state.finder.url);
   if (!response.ok) setMessage(response.error);
+}
+
+// Aus einer Fehlermeldung der Warteschlange: Die Seite gleich sichtbar öffnen.
+function openPageFromQueue(url) {
+  cancelSearch();
+  hideResults();
+  state.info = null;
+  state.playlist = null;
+  parts.url.value = url;
+  state.finder = { url, open: false, items: [], failed: true };
+  renderFinder();
+  parts.finder.hidden = false;
+  openFinder();
 }
 
 async function useFound(item, button) {
@@ -211,22 +357,27 @@ function foundRow(item) {
 }
 
 function renderFinder() {
-  const { open, items } = state.finder;
+  const { open, items, searching, failed } = state.finder;
   let text;
-  if (open && items.length === 0) text = t('Starte das Video im geöffneten Fenster. Sobald Vitool es findet, erscheint es hier.');
+  if (searching) text = t('yt-dlp kennt diese Seite nicht. Vitool öffnet sie unsichtbar, startet das Video ohne Ton und sucht den Stream. Das dauert ein paar Sekunden.');
+  else if (open && items.length === 0) text = t('Starte das Video im geöffneten Fenster. Sobald Vitool es findet, erscheint es hier.');
   else if (open) text = t('Gefunden. Läuft vorher Werbung, erscheinen mehrere Einträge. Der eigentliche Film ist meist ein Stream.');
-  else if (items.length === 0) text = t('yt-dlp kennt diese Seite nicht. Vitool kann sie in einem eigenen Fenster öffnen und das Video finden, während es dort läuft.');
-  else text = t('Das Fenster ist geschlossen. Du kannst ein gefundenes Video trotzdem noch verwenden.');
+  else if (items.length) text = t('Das Fenster ist geschlossen. Du kannst ein gefundenes Video trotzdem noch verwenden.');
+  else if (failed) text = t('Vitool hat das Video nicht von selbst gefunden. Öffne die Seite und starte es dort selbst.');
+  else text = t('yt-dlp kennt diese Seite nicht. Vitool kann sie in einem eigenen Fenster öffnen und das Video finden, während es dort läuft.');
   parts.finderText.textContent = text;
+  parts.finderSpinner.hidden = !searching;
+  parts.finderCancel.hidden = !searching;
   parts.finderList.replaceChildren(...items.map(foundRow));
   parts.finderList.hidden = items.length === 0;
   parts.finderOpen.hidden = open;
-  parts.finderOpen.textContent = items.length || state.finder.wasOpened ? t('Seite erneut öffnen') : t('Seite öffnen');
+  parts.finderOpen.className = `button ${searching ? 'small' : 'primary'}`;
+  parts.finderOpen.textContent = searching ? t('Selbst öffnen') : items.length || state.finder.wasOpened ? t('Seite erneut öffnen') : t('Seite öffnen');
   parts.finderClose.hidden = !open;
 }
 
 function onPageMedia({ open, items }) {
-  if (!state.finder.url) return;
+  if (!state.finder.url || state.finder.searching) return;
   if (open) state.finder.wasOpened = true;
   state.finder.open = open;
   state.finder.items = items;
@@ -236,7 +387,9 @@ function onPageMedia({ open, items }) {
 function showInfo(info) {
   state.info = info;
   state.useSections = false;
-  parts.playlistNote.hidden = info.playlist !== 'member';
+  state.playlist = null;
+  parts.playlistView.hidden = true;
+  renderNote();
 
   parts.thumb.src = info.thumbnail ?? '';
   parts.thumb.hidden = !info.thumbnail;
@@ -339,6 +492,7 @@ async function startDownload() {
     openInCut: parts.openInCut.checked,
     headers: info.headers ?? null,
     pageUrl: info.pageUrl ?? null,
+    subtitles: info.subtitles ?? [],
   });
   if (!response.ok) setMessage(response.error);
   else setMessage('');
@@ -385,6 +539,7 @@ function renderHistory(history) {
 
 function buildPage(root) {
   parts = {
+    urlCard: el('section', { class: 'card stack' }),
     url: el('input', {
       class: 'input grow',
       placeholder: t('Link zum Video einfügen'),
@@ -393,7 +548,7 @@ function buildPage(root) {
       onkeydown: (event) => {
         if (event.key === 'Enter') loadInfo();
       },
-      onpaste: () => setTimeout(loadInfo),
+      onpaste: onPaste,
     }),
     load: el('button', { class: 'button primary', onclick: loadInfo }, t('Prüfen')),
     message: el('p', { class: 'message', role: 'alert', hidden: true }),
@@ -422,6 +577,7 @@ function buildPage(root) {
     historyClear: el('button', { class: 'button small', onclick: async () => renderHistory(await invoke('download:clearHistory')) }, t('Verlauf leeren')),
     playlistNote: el('section', { class: 'card playlist-note', hidden: true }),
     playlistButton: el('button', { class: 'button small', onclick: () => loadPlaylist(state.pastedUrl) }, t('Ganze Playlist anzeigen')),
+    playlistLinksNote: el('p', { class: 'muted small-note', hidden: true }, t('Kennt yt-dlp eine Seite nicht, sucht Vitool das Video dort beim Download von selbst. Gefundene Untertitel landen als SRT neben dem Video.')),
     playlistView: el('div', { class: 'stack', hidden: true }),
     playlistTitle: el('h2', {}),
     playlistMeta: el('p', { class: 'muted' }),
@@ -433,12 +589,20 @@ function buildPage(root) {
       el('option', { value: '' }, t('Beste Qualität')),
       ...PLAYLIST_HEIGHTS.map((height) => el('option', { value: String(height) }, t('Höchstens {height}p', { height })))),
     plFolder: el('span', { class: 'folder-path' }),
-    plSubfolder: el('input', { type: 'checkbox', checked: true }),
+    plSubfolder: el('input', {
+      type: 'checkbox',
+      checked: true,
+      onchange: async (event) => {
+        state.settings = await invoke('settings:set', { playlistSubfolder: event.target.checked });
+      },
+    }),
     plSubfolderName: el('strong', {}),
     plStart: el('button', { class: 'button primary large', onclick: startPlaylist }),
     plStatus: el('p', { class: 'notice', role: 'status', hidden: true }),
     finder: el('section', { class: 'card stack', hidden: true }),
     finderText: el('p', { class: 'muted' }),
+    finderSpinner: el('span', { class: 'spinner', hidden: true, 'aria-hidden': 'true' }),
+    finderCancel: el('button', { class: 'button small', hidden: true, onclick: () => { cancelSearch(); parts.finder.hidden = true; } }, t('Abbrechen')),
     finderList: el('ul', { class: 'found-list', hidden: true }),
     finderOpen: el('button', { class: 'button primary', onclick: openFinder }),
     finderClose: el('button', { class: 'button small', onclick: () => invoke('download:closeFinder') }, t('Fenster schließen')),
@@ -448,18 +612,16 @@ function buildPage(root) {
     el('div', { class: 'section-head' }, el('h2', {}, t('Video auf der Seite suchen')), parts.finderClose),
     parts.finderText,
     parts.finderList,
-    el('div', {}, parts.finderOpen),
+    el('div', { class: 'marker-row' }, parts.finderSpinner, parts.finderOpen, parts.finderCancel),
   );
 
-  parts.playlistNote.append(
-    el('span', {}, t('Dieses Video gehört zu einer Playlist.')),
-    parts.playlistButton,
-  );
+  parts.playlistNote.append(el('span', {}, t('Dieses Video gehört zu einer Playlist.')), parts.playlistButton);
   parts.playlistView.append(
     el('section', { class: 'card stack' },
       el('div', { class: 'section-head' },
         el('div', { class: 'video-text' }, parts.playlistTitle, parts.playlistMeta),
         el('button', { class: 'button small', onclick: closePlaylist }, t('Schließen'))),
+      parts.playlistLinksNote,
       el('div', { class: 'marker-row' },
         el('button', { class: 'button small', onclick: () => selectAll(true) }, t('Alle')),
         el('button', { class: 'button small', onclick: () => selectAll(false) }, t('Keine')),
@@ -523,12 +685,17 @@ function buildPage(root) {
     ),
   );
 
+  parts.urlCard.append(
+    el('div', { class: 'url-row' }, parts.url, parts.load),
+    el('p', { class: 'muted small-note' }, t('Mehrere Links? Füge sie alle auf einmal ein oder ziehe eine Textdatei mit Links hierher.')),
+    // Bewusst nur eine ruhige Zeile: ein Hinweis, keine Hürde.
+    el('p', { class: 'muted small-note' }, t('Lade nur Videos herunter, die du nutzen darfst, etwa eigene oder frei lizenzierte. Urheberrecht und die Regeln der jeweiligen Seite gelten weiter.')),
+  );
+  setupDrop(root);
+
   root.append(
     pageHeader('Download', t('Link einfügen, Qualität wählen, fertig.')),
-    el('section', { class: 'card stack' },
-      el('div', { class: 'url-row' }, parts.url, parts.load),
-      // Bewusst nur eine ruhige Zeile: ein Hinweis, keine Hürde.
-      el('p', { class: 'muted small-note' }, t('Lade nur Videos herunter, die du nutzen darfst, etwa eigene oder frei lizenzierte. Urheberrecht und die Regeln der jeweiligen Seite gelten weiter.'))),
+    parts.urlCard,
     parts.message,
     parts.finder,
     parts.playlistNote,
@@ -561,6 +728,9 @@ export default {
     window.vitool.on('ytdlp:status', (status) => {
       if (parts.load.disabled && status.state === 'updating') parts.load.textContent = t('Aktualisiert yt-dlp …');
     });
+  },
+  onShow(data) {
+    if (data?.findOnPage) openPageFromQueue(data.findOnPage);
   },
   onHide() {
     parts.video.pause();

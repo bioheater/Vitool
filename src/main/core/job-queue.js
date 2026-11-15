@@ -73,7 +73,8 @@ class JobQueue extends EventEmitter {
 
     const handle = {
       signal: job.controller.signal,
-      update: ({ progress, detail }) => {
+      update: ({ progress, detail, title }) => {
+        if (title) job.title = title;
         if (progress !== undefined) job.progress = progress;
         if (detail !== undefined) job.detail = detail;
         this.notify();

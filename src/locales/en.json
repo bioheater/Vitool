@@ -809,5 +809,20 @@
   "Was ist neu": "What's new",
   "Neu in Vitool": "New in Vitool",
   "Neu in Vitool {version}": "New in Vitool {version}",
-  "Versatz gefunden: {offset} s. Geprüft an einer Stelle.": "Offset found: {offset} s. Checked at one point."
+  "Versatz gefunden: {offset} s. Geprüft an einer Stelle.": "Offset found: {offset} s. Checked at one point.",
+  "1 Link": "1 link",
+  "{count} Links": "{count} links",
+  "yt-dlp kennt diese Seite nicht. Vitool öffnet sie unsichtbar, startet das Video ohne Ton und sucht den Stream. Das dauert ein paar Sekunden.": "yt-dlp doesn't know this site. Vitool opens it in the background, plays the video muted and looks for the stream. This takes a few seconds.",
+  "Vitool hat das Video nicht von selbst gefunden. Öffne die Seite und starte es dort selbst.": "Vitool couldn't find the video by itself. Open the page and start it there yourself.",
+  "Selbst öffnen": "Open it myself",
+  "Kennt yt-dlp eine Seite nicht, sucht Vitool das Video dort beim Download von selbst. Gefundene Untertitel landen als SRT neben dem Video.": "If yt-dlp doesn't know a page, Vitool finds the video there by itself while downloading. Subtitles it finds are saved as SRT next to the video.",
+  "Mehrere Links? Füge sie alle auf einmal ein oder ziehe eine Textdatei mit Links hierher.": "Several links? Paste them all at once or drop a text file with links here.",
+  "Sucht das Video auf der Seite …": "Looking for the video on the page …",
+  "Vitool hat auf dieser Seite kein Video gefunden. Öffne die Seite und starte es selbst.": "Vitool didn't find a video on this page. Open the page and start it yourself.",
+  "Lädt Untertitel …": "Downloading subtitles …",
+  "Linkliste": "Link list",
+  "In diesem Text wurde kein Link gefunden.": "No link was found in this text.",
+  "Seite öffnen …": "Open page …",
+  "Hier loslassen, um die Links zu laden": "Drop here to load the links",
+  "Eine Textdatei mit Links oder ein Link aus dem Browser": "A text file with links or a link from your browser"
 }

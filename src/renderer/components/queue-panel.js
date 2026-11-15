@@ -18,11 +18,12 @@ function createRow(job) {
   const bar = el('div', { class: 'progress', role: 'progressbar', 'aria-label': job.title }, fill);
   const actions = el('span', { class: 'job-actions' });
   const error = el('p', { class: 'job-error', hidden: true });
+  const title = el('span', { class: 'job-title' });
   const node = el('li', { class: 'job' },
-    el('div', { class: 'job-head' }, el('span', { class: 'job-title', title: job.title }, job.title), detail, actions),
+    el('div', { class: 'job-head' }, title, detail, actions),
     bar,
     error);
-  return { node, detail, fill, bar, actions, error, status: null };
+  return { node, title, detail, fill, bar, actions, error, status: null };
 }
 
 function updateRow(row, job) {
@@ -30,6 +31,12 @@ function updateRow(row, job) {
   const value = job.status === 'done' ? 100 : job.progress ?? 0;
   const percent = job.status === 'running' && job.progress !== null ? `${Math.round(job.progress)} %` : '';
 
+  // Bei Seiten aus einer Linkliste kennt Vitool den richtigen Titel erst nach der Suche.
+  if (row.title.textContent !== job.title) {
+    row.title.textContent = job.title;
+    row.title.title = job.title;
+    row.bar.setAttribute('aria-label', job.title);
+  }
   row.detail.textContent = [job.detail, percent].filter(Boolean).join(' · ');
   row.detail.className = `job-detail ${STATUS_CLASS[job.status] ?? ''}`;
   row.bar.className = `progress ${job.status}`;
@@ -38,7 +45,7 @@ function updateRow(row, job) {
   if (unknown) row.bar.removeAttribute('aria-valuenow');
   else row.bar.setAttribute('aria-valuenow', String(Math.round(value)));
   // Nur neu aufbauen, wenn sich etwas ändert. Sonst entstünde der Knopf bei jedem Fortschritt anderer Aufgaben neu.
-  const errorKey = `${job.error ?? ''}|${job.fix ?? ''}`;
+  const errorKey = `${job.error ?? ''}|${JSON.stringify(job.fix ?? '')}`;
   if (row.errorKey !== errorKey) {
     row.errorKey = errorKey;
     const button = job.fix ? fixButton(job.fix, { doneText: t('Erledigt. Starte den Download bitte noch einmal.') }) : null;
