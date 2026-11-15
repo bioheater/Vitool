@@ -4,6 +4,7 @@ import cutPage from './pages/cut.js';
 import convertPage from './pages/convert.js';
 import toolsPage from './pages/tools.js';
 import mkvPage from './pages/mkv.js';
+import audioPage from './pages/audio.js';
 import aiPage from './pages/ai.js';
 import transcribePage from './pages/transcribe.js';
 import settingsPage from './pages/settings.js';
@@ -12,8 +13,9 @@ import { checkTools } from './components/tools-dialog.js';
 import { installVideoKeys } from './components/video-controls.js';
 import { el, icon } from './utils/dom.js';
 import { setupSidebar } from './components/sidebar.js';
+import { attachNavTip } from './components/nav-tip.js';
 import { ICONS } from './utils/icons.js';
-import { setNavigator } from './utils/navigation.js';
+import { setNavigator, setCurrentPage } from './utils/navigation.js';
 import { applyTheme, applyGlass } from './utils/themes.js';
 import { setupUpdateNotice } from './components/update-notice.js';
 import { showWhatsNew } from './components/whats-new-dialog.js';
@@ -24,7 +26,7 @@ if (window.vitool.i18n.dev) document.documentElement.dataset.dev = '';
 if (window.vitool.i18n.glass) applyGlass(true);
 
 // Neue Bereiche: Seite anlegen und hier eintragen.
-const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage, aiPage, transcribePage, settingsPage];
+const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage, audioPage, aiPage, transcribePage, settingsPage];
 
 const nav = document.getElementById('nav');
 const navBottom = document.getElementById('nav-bottom');
@@ -33,6 +35,7 @@ const navButtons = new Map();
 const pageRoots = new Map();
 
 function showPage(id, data) {
+  setCurrentPage(id);
   pages.forEach((page) => {
     const active = page.id === id;
     navButtons.get(page.id).classList.toggle('active', active);
@@ -49,6 +52,8 @@ pages.forEach((page) => {
   // Eingeklappt bleibt nur das Symbol, der Name erscheint dann beim Darüberfahren.
   button.title = page.label;
   button.append(icon(ICONS[page.id]), el('span', { class: 'nav-label' }, page.label));
+  // Beim Darüberfahren erklärt ein kurzer Satz, wofür der Bereich da ist.
+  if (page.hint) attachNavTip(button, page.label, page.hint);
   button.addEventListener('click', () => showPage(page.id));
   // Einstellungen stehen ganz unten in der Leiste.
   (page.bottom ? navBottom : nav).append(button);

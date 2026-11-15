@@ -22,6 +22,7 @@ const { YtDlp } = require('./core/ytdlp');
 const { createSignIn } = require('./core/sign-in');
 const { setupUpdater } = require('./core/updater');
 const whatsNew = require('./core/whats-new');
+const drafts = require('./core/drafts');
 const { CanceledError } = require('./core/process-runner');
 const { toGermanMessage } = require('./core/error-messages');
 const { listMediaFiles } = require('./core/files');
@@ -40,7 +41,9 @@ const features = [
   require('./features/convert'),
   require('./features/tools'),
   require('./features/mkv'),
+  require('./features/audio'),
   require('./features/censor'),
+  require('./features/chroma'),
   require('./features/ai'),
   require('./features/transcribe'),
 ];
@@ -278,6 +281,17 @@ app.whenReady().then(() => {
     });
     return result.canceled ? null : result.filePaths[0];
   });
+  ipcMain.handle('dialog:pickBackground', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: t('Hintergrund auswählen'),
+      properties: ['openFile'],
+      filters: [
+        { name: t('Bilder und Videos'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v'] },
+        { name: t('Alle Dateien'), extensions: ['*'] },
+      ],
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
   ipcMain.handle('dialog:pickSubtitle', async () => {
     const result = await dialog.showOpenDialog(win, {
       title: t('Untertitel auswählen'),
@@ -296,6 +310,7 @@ app.whenReady().then(() => {
   ipcMain.handle('queue:clearFinished', () => queue.clearFinished());
 
   whatsNew.register({ ipcMain, store });
+  drafts.register({ ipcMain, queue });
   const context = { ipcMain, queue, store, tools, send, ytdlp };
   features.forEach((feature) => feature.register(context));
 

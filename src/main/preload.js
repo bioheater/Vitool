@@ -42,6 +42,7 @@ const INVOKE_CHANNELS = [
   'convert:plan',
   'convert:start',
   'dialog:pickSubtitle',
+  'dialog:pickBackground',
   'tools:start',
   'dialog:pickTrack',
   'dialog:pickVideos',
@@ -49,11 +50,21 @@ const INVOKE_CHANNELS = [
   'mkv:read',
   'mkv:save',
   'mkv:extract',
+  'mkv:siblings',
   'mkv:waveform',
   'mkv:analyzeSync',
   'mkv:syncPreview',
   'mkv:loudness',
+  'audio:levels',
+  'audio:start',
+  'audio:preview',
+  'audio:cancelPreview',
+  'drafts:home',
+  'drafts:usage',
+  'drafts:clear',
+  'drafts:keep',
   'censor:start',
+  'chroma:start',
   'ai:status',
   'ai:install',
   'ai:downloadModel',
@@ -93,7 +104,7 @@ const INVOKE_CHANNELS = [
   'app:setTitleBar',
 ];
 
-const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'download:pageMedia', 'mkv:syncProgress', 'mkv:loudnessProgress', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged', 'update:status', 'ytdlp:status', 'signin:status'];
+const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'download:pageMedia', 'mkv:syncProgress', 'mkv:loudnessProgress', 'audio:levelsProgress', 'audio:previewProgress', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged', 'update:status', 'ytdlp:status', 'signin:status'];
 
 contextBridge.exposeInMainWorld('vitool', {
   invoke(channel, ...args) {

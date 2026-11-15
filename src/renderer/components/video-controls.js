@@ -10,6 +10,26 @@ export function stepFrame(video, direction) {
   video.currentTime = Math.max(0, video.currentTime + direction / fps);
 }
 
+// Springt, ohne dass die Steuerleiste aufblitzt. Chromium blendet sie bei jedem Sprung ein und erst
+// nach gut einer Sekunde wieder aus. So lange bleibt sie verborgen, außer die Maus ist über dem Video.
+const QUIET_MS = 1600;
+
+export function quietSeek(video, time) {
+  if (!video.quietSetup) {
+    video.quietSetup = true;
+    video.addEventListener('pointermove', () => {
+      clearTimeout(video.quietTimer);
+      video.classList.remove('quiet-seek');
+    });
+  }
+  if (!video.matches(':hover')) {
+    video.classList.add('quiet-seek');
+    clearTimeout(video.quietTimer);
+    video.quietTimer = setTimeout(() => video.classList.remove('quiet-seek'), QUIET_MS);
+  }
+  video.currentTime = time;
+}
+
 export function frameButtons(video) {
   return [
     el('button', { class: 'button small', onclick: () => stepFrame(video, -1) }, t('◀ Ein Bild zurück')),

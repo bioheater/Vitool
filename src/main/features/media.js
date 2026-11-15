@@ -8,6 +8,7 @@ const { toGermanMessage } = require('../core/error-messages');
 const { CanceledError } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
 const { t } = require('../core/i18n');
+const { isDraft, homeFolder } = require('../core/drafts');
 
 const previewDir = path.join(os.tmpdir(), `vitool-vorschau-${process.pid}`);
 
@@ -34,7 +35,9 @@ function register({ ipcMain, queue, tools }) {
   ipcMain.handle('media:probe', async (_event, filePath) => {
     try {
       const media = await probeMedia(tools.path('ffprobe'), filePath);
-      return { ok: true, media: { ...media, url: pathToFileURL(filePath).href } };
+      // Ein Zwischenstand liegt unter Temp. Gespeichert wird er dort, wo die ursprüngliche Datei liegt.
+      const draft = isDraft(filePath);
+      return { ok: true, media: { ...media, url: pathToFileURL(filePath).href, draft, homeFolder: await homeFolder(filePath) } };
     } catch (error) {
       return { ok: false, error: toGermanMessage(error) };
     }

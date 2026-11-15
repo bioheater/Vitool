@@ -2,9 +2,11 @@
 import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { createFileDrop } from '../components/file-drop.js';
-import { createSendTo } from '../components/send-to.js';
+import { createSendTo, createContinue } from '../components/send-to.js';
+import { draftBadge } from '../components/draft-badge.js';
 import { SyncPanel } from '../components/sync-panel.js';
 import { VolumePanel, formatGain } from '../components/volume-panel.js';
+import { SeasonPanel } from '../components/season-panel.js';
 import { t, LANGUAGE } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
@@ -26,6 +28,7 @@ const state = { files: [], tracks: [], folder: null };
 let parts = {};
 let syncPanel = null;
 let volumePanel = null;
+let seasonPanel = null;
 
 function setMessage(text) {
   parts.message.textContent = text;
@@ -184,6 +187,16 @@ function renderTracks() {
   parts.count.textContent = t('{kept} von {total} Spuren werden behalten', { kept, total: state.tracks.length });
   syncPanel.refresh();
   volumePanel.refresh();
+  seasonPanel.renderNote();
+}
+
+// Mit weiteren Folgen speichert derselbe Knopf alle auf einmal. Weiterbearbeiten geht nur mit einer Datei.
+function renderSaveButton() {
+  if (!parts.save) return;
+  const others = seasonPanel.files.filter((file) => file.selected).length;
+  parts.save.textContent = others ? t('{count} Dateien als MKV speichern', { count: others + 1 }) : t('Als MKV speichern');
+  parts.save.disabled = seasonPanel.waiting();
+  parts.continueButton.hidden = others > 0;
 }
 
 // Das Bild kommt etwas später. Gehört es nicht mehr zur geöffneten Datei, wird es verworfen.
@@ -208,10 +221,12 @@ async function openFile(filePath) {
   syncPanel.close();
   volumePanel.close();
   state.files = [filePath];
-  state.tracks = response.tracks;
-  state.folder = folderOf(filePath);
+  // Die ursprüngliche Sprache bleibt gemerkt, um die Spuren weiterer Folgen zuzuordnen.
+  state.tracks = response.tracks.map((track) => ({ ...track, originalLanguage: track.language }));
+  state.folder = await invoke('drafts:home', filePath);
+  parts.badge.hidden = state.folder === folderOf(filePath);
 
-  parts.name.textContent = filePath.slice(state.folder.length + 1);
+  parts.name.textContent = filePath.slice(folderOf(filePath).length + 1);
   showThumbnail(filePath);
   parts.name.title = filePath;
   parts.title.value = response.title;
@@ -221,6 +236,7 @@ async function openFile(filePath) {
   renderTracks();
   parts.drop.hidden = true;
   parts.workspace.hidden = false;
+  seasonPanel.load(filePath);
 }
 
 async function addFile(filePath) {
@@ -248,6 +264,7 @@ function removeSource(source) {
 function closeFile() {
   syncPanel.close();
   volumePanel.close();
+  seasonPanel.clear();
   state.files = [];
   state.tracks = [];
   setMessage('');
@@ -268,14 +285,30 @@ async function chooseFolder() {
   parts.folder.title = folder;
 }
 
-async function save() {
-  const response = await invoke('mkv:save', {
+function startSave(draft = false) {
+  return invoke('mkv:save', {
     files: state.files,
     tracks: state.tracks,
     title: parts.title.value,
     folder: state.folder,
+    draft,
   });
-  setMessage(response.ok ? '' : response.error);
+}
+
+async function save() {
+  const others = seasonPanel.selected();
+  const response = await startSave();
+  if (!response.ok) {
+    setMessage(response.error);
+    return;
+  }
+  // Jede weitere Folge wird ein eigener Auftrag in der Warteschlange, mit ihrem eigenen Titel.
+  const errors = [];
+  for (const file of others) {
+    const result = await invoke('mkv:save', { files: [file.path], tracks: file.tracks, title: file.title, folder: state.folder, draft: false });
+    if (!result.ok) errors.push(`${file.path.split(/[\\/]/).pop()}: ${result.error}`);
+  }
+  setMessage(errors.join('\n'));
 }
 
 function buildPage(root) {
@@ -289,6 +322,7 @@ function buildPage(root) {
     title: el('input', { class: 'input grow', placeholder: t('Titel des Videos'), 'aria-label': t('Titel des Videos') }),
     tracks: el('ul', { class: 'track-list' }),
     folder: el('span', { class: 'folder-path' }),
+    badge: draftBadge(),
   };
 
   syncPanel = new SyncPanel({
@@ -301,10 +335,13 @@ function buildPage(root) {
     getTracks: () => state.tracks,
     onChange: renderTracks,
   });
+  seasonPanel = new SeasonPanel({ getReference: () => state.tracks, onChange: renderSaveButton });
+  parts.save = el('button', { class: 'button primary large', onclick: save }, t('Als MKV speichern'));
+  parts.continueButton = createContinue({ exclude: 'mkv', start: () => startSave(true), onError: setMessage });
 
   parts.workspace.append(
     el('section', { class: 'card file-card' },
-      el('div', { class: 'video-card' }, parts.thumb, el('div', { class: 'video-text' }, parts.name, parts.count)),
+      el('div', { class: 'video-card' }, parts.thumb, el('div', { class: 'video-text' }, parts.name, parts.count, parts.badge)),
       el('div', { class: 'file-actions' },
         createSendTo({ getPath: () => state.files[0], exclude: 'mkv' }),
         el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),
@@ -323,6 +360,7 @@ function buildPage(root) {
     ),
     syncPanel.root,
     volumePanel.root,
+    seasonPanel.root,
     el('section', { class: 'card stack' },
       el('p', { class: 'muted' }, t('Das Ergebnis ist eine MKV-Datei. Es wird nichts neu kodiert, außer Tonspuren mit geänderter Lautstärke oder angepasstem Tempo. Die Qualität bleibt gleich und es dauert meist nur Sekunden. Kapitel bleiben erhalten.')),
       el('div', { class: 'folder-row' },
@@ -330,7 +368,9 @@ function buildPage(root) {
         parts.folder,
         el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern')),
       ),
-      el('div', {}, el('button', { class: 'button primary large', onclick: save }, t('Als MKV speichern'))),
+      el('div', { class: 'action-row' },
+        parts.save,
+        parts.continueButton),
     ),
   );
 
@@ -345,6 +385,7 @@ function buildPage(root) {
 export default {
   id: 'mkv',
   label: 'MKV',
+  hint: t('Spuren entfernen, hinzufügen und Tonspuren angleichen.'),
   mount: buildPage,
   onShow(data) {
     if (data?.filePath) openFile(data.filePath);

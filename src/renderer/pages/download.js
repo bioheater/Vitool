@@ -712,6 +712,7 @@ function buildPage(root) {
 export default {
   id: 'download',
   label: 'Download',
+  hint: t('Videos und Ton aus Links laden, auch ganze Playlists.'),
   async mount(root) {
     buildPage(root);
     state.settings = await invoke('settings:get');

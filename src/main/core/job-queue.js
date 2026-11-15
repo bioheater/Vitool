@@ -4,6 +4,7 @@ const { randomUUID } = require('crypto');
 const { CanceledError } = require('./process-runner');
 const { toGermanMessage } = require('./error-messages');
 const { t } = require('./i18n');
+const { isDraft } = require('./drafts');
 
 const MAX_PARALLEL = 2;
 const UPDATE_INTERVAL_MS = 150;
@@ -16,7 +17,8 @@ class JobQueue extends EventEmitter {
   }
 
   list() {
-    return this.jobs.map(({ run: _run, controller: _controller, ...job }) => job);
+    // draft: Das Ergebnis ist ein Zwischenstand und noch nirgends gespeichert.
+    return this.jobs.map(({ run: _run, controller: _controller, ...job }) => ({ ...job, draft: isDraft(job.resultPath) }));
   }
 
   add({ title, kind, run }) {

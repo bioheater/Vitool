@@ -12,7 +12,8 @@ const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
 const {
   exec, findGpu, folderSizeGb, downloadFile, pythonScript, createEnvironment, installPackages, uninstallPackages, cleanUvCache,
 } = require('../core/python-tools');
-const { moveFile, uniquePath } = require('../core/files');
+const { uniquePath } = require('../core/files');
+const { saveResult, homeFolder } = require('../core/drafts');
 const { FORMATS } = require('./transcript-formats');
 const { STYLES, lookFor, cuesFor, toAss } = require('./subtitle-styles');
 const { commonArgs } = require('./download');
@@ -390,8 +391,8 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
       });
 
       const name = (options.name || path.parse(media.name).name).replace(/[<>:"/\\|?*]/g, '').trim() || 'Video';
-      const folder = fromLink ? store.get('settings').downloadDir : path.dirname(options.filePath);
-      return await moveFile(output, folder, `${name} (${t('mit Untertiteln')}).mp4`);
+      const folder = fromLink ? store.get('settings').downloadDir : await homeFolder(options.filePath);
+      return await saveResult(output, { draft: options.draft, folder }, `${name} (${t('mit Untertiteln')}).mp4`);
     } finally {
       await fs.rm(temp, { recursive: true, force: true }).catch(() => {});
     }
@@ -580,11 +581,12 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
   handle('transcribe:burn', (options) => {
     if (!STYLES[options.style]) throw new UserError(t('Diesen Style gibt es nicht.'));
     if (!options.transcript?.segments?.length) throw new UserError(t('Es gibt noch keinen Text zum Einbrennen.'));
-    queue.add({
+    const jobId = queue.add({
       title: t('Untertitel einbrennen: {name}', { name: options.name }),
       kind: 'transcribe',
       run: (job) => runBurn(options, job),
     });
+    return { jobId };
   });
 
   register.dispose = () => {

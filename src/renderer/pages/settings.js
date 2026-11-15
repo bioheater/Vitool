@@ -198,6 +198,15 @@ async function signOut() {
   parts.signInCheck.checked = false;
 }
 
+function renderDrafts({ count, bytes }) {
+  const size = bytes >= 1024 ** 3
+    ? `${new Intl.NumberFormat(LANGUAGE, { maximumFractionDigits: 1 }).format(bytes / 1024 ** 3)} GB`
+    : `${new Intl.NumberFormat(LANGUAGE, { maximumFractionDigits: 0 }).format(bytes / 1024 ** 2)} MB`;
+  parts.drafts.textContent = count === 0 ? t('Keine')
+    : count === 1 ? t('1 Zwischenstand, {size}', { size }) : t('{count} Zwischenstände, {size}', { count, size });
+  parts.clearDrafts.disabled = count === 0;
+}
+
 async function renderTools() {
   const { tools } = await invoke('tools:check');
   parts.tools.replaceChildren(...tools.filter((tool) => SHOWN_TOOLS.includes(tool.id)).map(toolRow));
@@ -224,6 +233,8 @@ function buildPage(root) {
     ytdlpStatus: el('span', { class: 'muted' }),
     autoHint: el('p', { class: 'muted' }),
     signInCard: el('section', { class: 'card stack' }),
+    drafts: el('span', { class: 'folder-path' }),
+    clearDrafts: el('button', { class: 'button small', onclick: async () => renderDrafts(await invoke('drafts:clear')) }, t('Jetzt löschen')),
     signInState: el('span', {}),
     signInCheck: el('input', {
       type: 'checkbox',
@@ -308,6 +319,14 @@ function buildPage(root) {
     ),
     parts.signInCard,
     el('section', { class: 'card stack' },
+      el('h2', {}, t('Zwischenstände')),
+      el('div', { class: 'folder-row' },
+        el('span', { class: 'muted' }, t('Belegt')),
+        parts.drafts,
+        parts.clearDrafts),
+      el('p', { class: 'muted' }, t('Mit „Weiter bearbeiten in“ entsteht ein Zwischenstand, der erst beim Speichern im Zielordner landet. Ungespeicherte Zwischenstände löscht Vitool nach drei Tagen von selbst.')),
+    ),
+    el('section', { class: 'card stack' },
       el('h2', {}, t('Programme')),
       parts.tools,
       el('div', { class: 'folder-row' },
@@ -350,6 +369,7 @@ export default {
     parts.dataFolder.textContent = info.userData;
     parts.dataFolder.title = info.userData;
     renderTools();
+    renderDrafts(await invoke('drafts:usage'));
     renderYtdlp(await invoke('ytdlp:status'));
     renderSignIn(await invoke('signin:status'));
     renderUpdate(await invoke('update:status'));

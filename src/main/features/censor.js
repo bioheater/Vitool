@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { runFfmpeg, probeMedia, videoEncoderArgs } = require('../core/ffmpeg');
-const { moveFile } = require('../core/files');
+const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 
 const MASK_WIDTH = 640;
@@ -283,7 +283,7 @@ function register({ ipcMain, queue, tools }) {
           writeMasks(stdin, fields, mask, frameCount, fps);
         },
       });
-      return await moveFile(output, options.folder, `${path.parse(media.name).name} (${t('zensiert')}).mp4`);
+      return await saveResult(output, options, `${path.parse(media.name).name} (${t('zensiert')}).mp4`);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -293,12 +293,12 @@ function register({ ipcMain, queue, tools }) {
     try {
       const media = await probeMedia(tools.path('ffprobe'), options.filePath);
       validate(options, media);
-      queue.add({
+      const jobId = queue.add({
         title: media.name,
         kind: 'censor',
         run: (job) => runCensor(options, media, job),
       });
-      return { ok: true };
+      return { ok: true, jobId };
     } catch (error) {
       return { ok: false, error: toGermanMessage(error) };
     }

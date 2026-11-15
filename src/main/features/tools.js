@@ -1,17 +1,13 @@
-// Bereich Werkzeuge: GIF erstellen, Audio extrahieren, Standbild speichern, Untertitel einbrennen.
+// Bereich Werkzeuge: GIF erstellen, Standbild speichern, Untertitel einbrennen.
 const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
-const { moveFile } = require('../core/files');
-const { AUDIO_FORMATS } = require('./convert');
+const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 
-const COPY_EXTENSIONS = {
-  aac: 'm4a', mp3: 'mp3', opus: 'opus', vorbis: 'ogg', flac: 'flac', ac3: 'ac3',
-};
 const STYLABLE_SUBTITLES = ['.srt', '.vtt'];
 const SUBTITLE_FONT_SIZES = { klein: 16, mittel: 22, gross: 30 };
 
@@ -41,34 +37,6 @@ function gifSteps(options, media, tempDir) {
     args: ['-ss', start.toFixed(3), '-to', end.toFixed(3), '-i', media.path, '-filter_complex', filter, '-loop', '0', output],
     duration: end - start,
     label: t('Erstellt GIF'),
-  };
-}
-
-function audioSteps(options, media, tempDir) {
-  if (!media.hasAudio) throw new UserError(t('Diese Datei enthält keine Tonspur.'));
-  const baseName = path.parse(media.name).name;
-
-  if (options.format === 'original') {
-    const ext = COPY_EXTENSIONS[media.audioCodec] ?? 'mka';
-    const output = path.join(tempDir, `ergebnis.${ext}`);
-    return {
-      output,
-      fileName: `${baseName} (Audio).${ext}`,
-      args: ['-i', media.path, '-vn', '-map', '0:a:0', '-c:a', 'copy', output],
-      duration: media.duration,
-      label: t('Extrahiert Audio'),
-    };
-  }
-
-  const format = AUDIO_FORMATS[options.format];
-  if (!format) throw new UserError(t('Dieses Format wird nicht unterstützt.'));
-  const output = path.join(tempDir, `ergebnis.${options.format}`);
-  return {
-    output,
-    fileName: `${baseName} (Audio).${options.format}`,
-    args: ['-i', media.path, '-vn', '-map', '0:a:0', '-c:a', format.codec, ...format.quality, output],
-    duration: media.duration,
-    label: t('Extrahiert Audio'),
   };
 }
 
@@ -138,7 +106,6 @@ function register({ ipcMain, queue, tools }) {
   function prepare(options, media, tempDir) {
     switch (options.tool) {
       case 'gif': return gifSteps(options, media, tempDir);
-      case 'audio': return audioSteps(options, media, tempDir);
       case 'frame': return frameSteps(options, media, tempDir);
       case 'subtitle': return subtitleSteps(options, media, tempDir, tools.path('ffprobe'));
       default: throw new UserError(t('Dieses Werkzeug gibt es nicht.'));
@@ -154,7 +121,7 @@ function register({ ipcMain, queue, tools }) {
         signal: job.signal,
         onProgress: (part) => job.update({ progress: part * 100, detail: step.label }),
       });
-      return await moveFile(step.output, options.folder, step.fileName);
+      return await saveResult(step.output, options, step.fileName);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -167,12 +134,12 @@ function register({ ipcMain, queue, tools }) {
       const media = await probeMedia(tools.path('ffprobe'), options.filePath);
       tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-'));
       const step = await prepare(options, media, tempDir);
-      queue.add({
+      const jobId = queue.add({
         title: media.name,
         kind: options.tool,
         run: (job) => runTool(step, options, tempDir, job),
       });
-      return { ok: true };
+      return { ok: true, jobId };
     } catch (error) {
       if (tempDir) await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
       return { ok: false, error: toGermanMessage(error) };

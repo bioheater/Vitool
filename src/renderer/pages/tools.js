@@ -1,10 +1,12 @@
-// Bereich Werkzeuge: GIF, Audio extrahieren, Standbild und Untertitel einbrennen.
+// Bereich Werkzeuge: GIF, Standbild, Untertitel einbrennen, Zensieren und Greenscreen.
 import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { CensorEditor } from '../components/censor-editor.js';
+import { ChromaEditor } from '../components/chroma-editor.js';
 import { createFileDrop } from '../components/file-drop.js';
-import { createSendTo } from '../components/send-to.js';
+import { createSendTo, createContinue } from '../components/send-to.js';
+import { draftBadge } from '../components/draft-badge.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { SectionEditor } from '../components/section-editor.js';
 import { frameButtons } from '../components/video-controls.js';
@@ -16,11 +18,11 @@ const GIF_DEFAULT_SECONDS = 5;
 const GIF_LONG_SECONDS = 15;
 
 const TOOLS = [
-  { id: 'gif', label: t('GIF erstellen'), action: t('GIF erstellen'), needsVideo: true, icon: 'layers', text: t('Kurze Animation aus einem Ausschnitt') },
-  { id: 'audio', label: t('Audio extrahieren'), action: t('Audio extrahieren'), needsAudio: true, icon: 'music', text: t('Tonspur als MP3, WAV oder im Original') },
-  { id: 'frame', label: t('Standbild'), action: t('Bild speichern'), needsVideo: true, icon: 'image', text: t('Ein Einzelbild als PNG oder JPG') },
+  { id: 'gif', label: t('GIF erstellen'), action: t('GIF erstellen'), stillImage: true, needsVideo: true, icon: 'layers', text: t('Kurze Animation aus einem Ausschnitt') },
+  { id: 'frame', label: t('Standbild'), action: t('Bild speichern'), stillImage: true, needsVideo: true, icon: 'image', text: t('Ein Einzelbild als PNG oder JPG') },
   { id: 'subtitle', label: t('Untertitel einbrennen'), action: t('Untertitel einbrennen'), needsVideo: true, icon: 'text', text: t('SRT, ASS oder VTT fest ins Bild') },
   { id: 'censor', label: t('Zensieren'), action: t('Zensiert exportieren'), needsVideo: true, icon: 'target', text: t('Stellen mit Keyframes verdecken') },
+  { id: 'chroma', label: t('Greenscreen'), action: t('Hintergrund ersetzen'), needsVideo: true, icon: 'chroma', text: t('Grün oder Blau ausstanzen und den Hintergrund ersetzen') },
 ];
 
 const state = {
@@ -28,7 +30,6 @@ const state = {
   tool: 'gif',
   preferredTool: null,
   folder: null,
-  audioFormat: 'mp3',
   frameFormat: 'png',
   subtitlePath: null,
 };
@@ -36,6 +37,7 @@ let parts = {};
 let player = null;
 let editor = null;
 let censor = null;
+let chroma = null;
 
 function setMessage(text) {
   parts.message.textContent = text;
@@ -43,7 +45,7 @@ function setMessage(text) {
 }
 
 function toolAvailable(tool, media) {
-  return (!tool.needsVideo || media.hasVideo) && (!tool.needsAudio || media.hasAudio);
+  return !tool.needsVideo || media.hasVideo;
 }
 
 function selectTool(id) {
@@ -59,17 +61,26 @@ function selectTool(id) {
     panel.hidden = panelId !== id;
   });
 
-  const showsPicture = id === 'gif' || id === 'frame' || id === 'censor';
+  const showsPicture = id === 'gif' || id === 'frame' || id === 'censor' || id === 'chroma';
   parts.playerCard.hidden = !showsPicture;
   parts.columns.classList.toggle('single', !showsPicture);
   if (!showsPicture) player.video.pause();
-  censor.setActive(id === 'censor');
+  // Beide Editoren stellen die Vorschaufläche um. Erst den alten abschalten, dann den neuen einschalten.
+  if (id === 'censor') {
+    chroma.setActive(false);
+    censor.setActive(true);
+  } else {
+    censor.setActive(false);
+    chroma.setActive(id === 'chroma');
+  }
   censor.timelineRoot.hidden = id !== 'censor';
   censor.timelineHint.hidden = id !== 'censor' || censor.fields.length === 0;
   editor.root.hidden = id !== 'gif';
   editor.loopEnabled = id === 'gif';
   parts.frameControls.hidden = id !== 'frame';
   parts.start.textContent = tool.action;
+  // GIFs und Standbilder lassen sich nicht weiterbearbeiten.
+  parts.continueButton.hidden = Boolean(tool.stillImage);
 
   if (showsPicture && state.media && !player.video.getAttribute('src')) player.load(state.media);
   updateGifHint();
@@ -92,7 +103,9 @@ function renderSubtitle() {
 
 function updateStart() {
   parts.start.disabled = (state.tool === 'subtitle' && !state.subtitlePath)
-    || (state.tool === 'censor' && censor.fields.length === 0);
+    || (state.tool === 'censor' && censor.fields.length === 0)
+    || (state.tool === 'chroma' && !chroma.ready());
+  parts.continueButton.disabled = parts.start.disabled;
 }
 
 async function openFile(filePath) {
@@ -104,9 +117,15 @@ async function openFile(filePath) {
   }
 
   const { media } = response;
+  // Alle Werkzeuge hier brauchen ein Bild. Für reine Tondateien gibt es den Bereich Ton.
+  if (!media.hasVideo) {
+    setMessage(t('Diese Datei enthält kein Video. Tondateien bearbeitest du im Bereich Ton.'));
+    return;
+  }
   state.media = media;
-  state.folder = folderOf(media.path);
+  state.folder = media.homeFolder ?? folderOf(media.path);
   state.subtitlePath = null;
+  parts.badge.hidden = !media.draft;
 
   parts.name.textContent = media.name;
   parts.name.title = media.path;
@@ -127,6 +146,7 @@ async function openFile(filePath) {
   editor.ensureRange();
   editor.render();
   censor.load(media);
+  chroma.load(media);
 
   parts.drop.hidden = true;
   parts.workspace.hidden = false;
@@ -151,8 +171,8 @@ async function chooseFolder() {
   parts.folder.title = folder;
 }
 
-function toolOptions() {
-  const base = { tool: state.tool, filePath: state.media.path, folder: state.folder };
+function toolOptions(draft = false) {
+  const base = { tool: state.tool, filePath: state.media.path, folder: state.folder, draft };
   switch (state.tool) {
     case 'gif': {
       const [{ start, end }] = editor.ranges;
@@ -164,16 +184,19 @@ function toolOptions() {
         fps: Number(parts.gifFps.value),
       };
     }
-    case 'audio': return { ...base, format: state.audioFormat };
     case 'frame': return { ...base, time: player.video.currentTime, format: state.frameFormat };
     default: return { ...base, subtitlePath: state.subtitlePath, fontSize: parts.subtitleSize.value };
   }
 }
 
+function startTool(draft = false) {
+  if (state.tool === 'censor') return invoke('censor:start', { filePath: state.media.path, fields: censor.fields, folder: state.folder, draft });
+  if (state.tool === 'chroma') return invoke('chroma:start', { filePath: state.media.path, folder: state.folder, draft, ...chroma.options() });
+  return invoke('tools:start', toolOptions(draft));
+}
+
 async function runTool() {
-  const response = state.tool === 'censor'
-    ? await invoke('censor:start', { filePath: state.media.path, fields: censor.fields, folder: state.folder })
-    : await invoke('tools:start', toolOptions());
+  const response = await startTool();
   setMessage(response.ok ? '' : response.error);
 }
 
@@ -213,6 +236,7 @@ function buildPage(root) {
     single: true,
   });
   censor = new CensorEditor({ player, onChange: () => updateStart() });
+  chroma = new ChromaEditor({ player, onChange: () => parts.start && updateStart() });
   editor.root.addEventListener('input', updateGifHint);
   editor.root.addEventListener('pointerup', updateGifHint);
   editor.root.addEventListener('change', updateGifHint);
@@ -268,7 +292,9 @@ function buildPage(root) {
       el('option', { value: 'gross' }, t('Groß'))),
     folder: el('span', { class: 'folder-path' }),
     start: el('button', { class: 'button primary large', onclick: runTool }),
+    badge: draftBadge(),
   };
+  parts.continueButton = createContinue({ exclude: 'tools', start: () => startTool(true), onError: setMessage });
 
   parts.frameControls.append(
     ...frameButtons(player.video),
@@ -276,7 +302,7 @@ function buildPage(root) {
       state.frameFormat = value;
     }),
   );
-  parts.playerCard.append(player.root, editor.root, censor.timelineHint, censor.timelineRoot, parts.frameControls);
+  parts.playerCard.append(player.root, editor.root, censor.timelineHint, censor.timelineRoot, chroma.controlsRow, parts.frameControls);
 
   parts.subtitleChosen.append(
     el('span', { class: 'muted' }, t('Untertitel')),
@@ -290,25 +316,12 @@ function buildPage(root) {
     }, t('Andere Datei')),
   );
 
-  const audioChoices = [
-    { value: 'mp3', text: 'MP3' },
-    { value: 'm4a', text: 'M4A' },
-    { value: 'wav', text: 'WAV' },
-    { value: 'flac', text: 'FLAC' },
-    { value: 'original', text: t('Original') },
-  ];
-
   parts.panels = new Map([
     ['gif', el('section', { class: 'card stack' },
       el('div', { class: 'option-row' }, selectField(t('Breite'), parts.gifWidth), selectField(t('Bilder pro Sekunde'), parts.gifFps)),
       parts.gifHint)],
-    ['audio', el('section', { class: 'card stack' },
-      el('h2', {}, t('Format')),
-      choiceGroup(t('Audioformat'), audioChoices, state.audioFormat, (value) => {
-        state.audioFormat = value;
-      }),
-      el('p', { class: 'muted' }, t('Original übernimmt die Tonspur unverändert und ohne Qualitätsverlust.')))],
     ['censor', censor.root],
+    ['chroma', chroma.root],
     ['frame', el('section', { class: 'card' },
       el('p', { class: 'muted' }, t('Gespeichert wird das Bild an der aktuellen Stelle des Players. Mit den Knöpfen gehst du bildgenau vor und zurück.')))],
     ['subtitle', el('section', { class: 'card stack' },
@@ -320,7 +333,7 @@ function buildPage(root) {
 
   parts.workspace.append(
     el('section', { class: 'card file-card' },
-      el('div', { class: 'video-text' }, parts.name, parts.info),
+      el('div', { class: 'video-text' }, parts.name, parts.info, parts.badge),
       el('div', { class: 'file-actions' },
         createSendTo({ getPath: () => state.media?.path, exclude: 'tools' }),
         el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),
@@ -339,7 +352,7 @@ function buildPage(root) {
           parts.folder,
           el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern')),
         ),
-        el('div', {}, parts.start),
+        el('div', { class: 'action-row' }, parts.start, parts.continueButton),
       ),
     ),
   );
@@ -351,6 +364,7 @@ function buildPage(root) {
 export default {
   id: 'tools',
   label: t('Werkzeuge'),
+  hint: t('GIF, Standbild, Untertitel einbrennen, Zensieren und Greenscreen.'),
   mount: buildPage,
   onShow(data) {
     if (data?.filePath) openFile(data.filePath);

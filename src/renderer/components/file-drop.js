@@ -31,7 +31,8 @@ function writeRecent(list) {
 }
 
 export function rememberFile(filePath) {
-  if (!filePath || !isMediaFile(filePath)) return;
+  // Zwischenstände verschwinden nach ein paar Tagen und gehören nicht in die Liste.
+  if (!filePath || !isMediaFile(filePath) || /[\\/]vitool-zwischenstaende[\\/]/i.test(filePath)) return;
   writeRecent([filePath, ...readRecent().filter((entry) => entry !== filePath)].slice(0, RECENT_LIMIT));
 }
 

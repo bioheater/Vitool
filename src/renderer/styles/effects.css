@@ -2027,3 +2027,283 @@ body {
 :root[data-dev] .brand-mark .dev-badge {
   display: inline;
 }
+
+/* Weitergeben und Zwischenstände */
+.send-button {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.send-button .icon {
+  height: 15px;
+  width: 15px;
+}
+
+.button.large.send-button .icon {
+  height: 17px;
+  width: 17px;
+}
+
+.send-caret {
+  font-size: 0.8em;
+  opacity: 0.75;
+}
+
+.continue-button {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--accent);
+}
+
+.continue-button:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.send-menu-title {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 4px 8px 6px;
+  max-width: 230px;
+}
+
+.send-item {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.send-item .icon {
+  color: var(--accent-2);
+  height: 16px;
+  width: 16px;
+}
+
+.action-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.job-actions {
+  gap: 6px;
+}
+
+.draft-badge {
+  background: color-mix(in srgb, var(--accent-2) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-2) 45%, transparent);
+  border-radius: 999px;
+  color: var(--accent-2);
+  display: inline-block;
+  font-size: 12px;
+  margin: 6px 0 0;
+  padding: 2px 10px;
+}
+
+.draft-badge[hidden] {
+  display: none;
+}
+
+/* Bereich Ton */
+.audio-option-head {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+}
+
+.audio-option-head .feature-icon {
+  margin: 0;
+}
+
+.audio-option-text {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+}
+
+.audio-option-head .switch {
+  flex: none;
+}
+
+.audio-wave-box {
+  background: var(--well);
+  border-radius: var(--radius-small);
+  cursor: pointer;
+  height: 96px;
+  overflow: hidden;
+  position: relative;
+}
+
+.audio-wave {
+  --wave-cut: color-mix(in srgb, var(--danger) 30%, transparent);
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.audio-playhead {
+  background: var(--text);
+  bottom: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 2px;
+}
+
+.audio-measure {
+  margin-top: -4px;
+}
+
+.audio-auto {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: -6px;
+}
+
+.audio-summary:empty {
+  display: none;
+}
+
+/* Nach einem automatischen Sprung bleibt die Steuerleiste des Players kurz verborgen. */
+video.quiet-seek::-webkit-media-controls-panel {
+  opacity: 0 !important;
+  transition: none !important;
+}
+
+/* Kurzbeschreibung neben der Seitenleiste */
+.nav-tip {
+  background: var(--menu);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+  display: grid;
+  font-size: 13px;
+  gap: 3px;
+  line-height: 1.4;
+  max-width: 250px;
+  padding: 9px 12px;
+  pointer-events: none;
+  position: fixed;
+  z-index: 1000;
+}
+
+.nav-tip[hidden] {
+  display: none;
+}
+
+.nav-tip.visible {
+  animation: nav-tip-in 0.14s ease-out;
+}
+
+.nav-tip-title {
+  color: var(--text);
+}
+
+.nav-tip-text {
+  color: var(--muted);
+}
+
+@keyframes nav-tip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+
+/* Greenscreen */
+.chroma-canvas {
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.chroma-canvas.picking {
+  cursor: crosshair;
+}
+
+.chroma-canvas.checker {
+  background: repeating-conic-gradient(#3a3d44 0% 25%, #2a2c31 0% 50%) 0 0 / 20px 20px;
+}
+
+.chroma-controls .chroma-seek {
+  flex: 1;
+  min-width: 120px;
+}
+
+.chroma-swatch {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex-shrink: 0;
+  height: 26px;
+  width: 26px;
+}
+
+.chroma-swatch.empty {
+  background: repeating-conic-gradient(#3a3d44 0% 25%, #2a2c31 0% 50%) 0 0 / 8px 8px !important;
+}
+
+.chroma-color {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  height: 30px;
+  padding: 2px;
+  width: 48px;
+}
+
+/* MKV: weitere Folgen */
+.season-list {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.season-row {
+  align-items: center;
+  background: color-mix(in srgb, var(--well) 42%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  justify-content: space-between;
+  padding: 7px 10px;
+}
+
+.season-row.off .season-name span {
+  color: var(--muted);
+}
+
+.season-name {
+  min-width: 0;
+}
+
+.season-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.season-status {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.season-status.ok {
+  color: var(--accent);
+}
+
+.season-status.warn {
+  color: #e8b04a;
+}

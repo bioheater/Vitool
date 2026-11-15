@@ -1,7 +1,7 @@
 // Zeigt laufende und fertige Aufgaben unten im Fenster.
 // Zeilen bleiben bestehen und ändern nur Text und Balken, sonst würde die Liste bei jedem Schritt springen.
 import { el } from '../utils/dom.js';
-import { isMediaFile } from '../utils/navigation.js';
+import { isMediaFile, sendTo, followTarget, forgetFollow, onFollowChange, targetLabel } from '../utils/navigation.js';
 import { createSendTo } from './send-to.js';
 import { fixButton } from './error-fix.js';
 import { t } from '../utils/i18n.js';
@@ -26,6 +26,13 @@ function createRow(job) {
   return { node, title, detail, fill, bar, actions, error, status: null };
 }
 
+// Ein Zwischenstand wird erst hier zur richtigen Datei. Vorgeschlagen wird der Ordner der ursprünglichen Datei.
+async function keepDraft(filePath) {
+  const home = await window.vitool.invoke('drafts:home', filePath);
+  const folder = await window.vitool.invoke('dialog:pickFolder', home);
+  if (folder) await window.vitool.invoke('drafts:keep', { filePath, folder });
+}
+
 function updateRow(row, job) {
   const unknown = job.status === 'running' && job.progress === null;
   const value = job.status === 'done' ? 100 : job.progress ?? 0;
@@ -37,7 +44,8 @@ function updateRow(row, job) {
     row.title.title = job.title;
     row.bar.setAttribute('aria-label', job.title);
   }
-  row.detail.textContent = [job.detail, percent].filter(Boolean).join(' · ');
+  const draft = job.status === 'done' && job.draft ? t('Zwischenstand, noch nicht gespeichert') : '';
+  row.detail.textContent = [job.detail, percent, draft].filter(Boolean).join(' · ');
   row.detail.className = `job-detail ${STATUS_CLASS[job.status] ?? ''}`;
   row.bar.className = `progress ${job.status}`;
   row.fill.classList.toggle('unknown', unknown);
@@ -53,16 +61,32 @@ function updateRow(row, job) {
   }
   row.error.hidden = !job.error;
 
-  if (row.status === job.status) return;
-  row.status = job.status;
+  // Wartet das Ergebnis darauf, im nächsten Bereich geöffnet zu werden, steht das als eigener Knopf da.
+  const actionKey = `${job.status}|${followTarget(job.id) ?? ''}`;
+  if (row.status === actionKey) return;
+  row.status = actionKey;
   row.actions.replaceChildren();
   if (isActive(job)) {
     row.actions.append(el('button', { class: 'button small', onclick: () => window.vitool.invoke('queue:cancel', job.id) }, t('Abbrechen')));
   } else if (job.resultPath) {
+    const target = job.status === 'done' ? followTarget(job.id) : null;
+    if (target) {
+      row.actions.append(el('button', {
+        class: 'button small primary',
+        onclick: () => {
+          forgetFollow(job.id);
+          sendTo(target, job.resultPath);
+        },
+      }, t('In {area} öffnen', { area: targetLabel(target) })));
+    }
     if (isMediaFile(job.resultPath)) {
       row.actions.append(createSendTo({ getPath: () => job.resultPath, label: t('Weiter bearbeiten') }));
     }
-    row.actions.append(el('button', { class: 'button small', onclick: () => window.vitool.invoke('shell:showFile', job.resultPath) }, t('Im Ordner zeigen')));
+    if (job.draft) {
+      row.actions.append(el('button', { class: 'button small', onclick: () => keepDraft(job.resultPath) }, t('Speichern …')));
+    } else {
+      row.actions.append(el('button', { class: 'button small', onclick: () => window.vitool.invoke('shell:showFile', job.resultPath) }, t('Im Ordner zeigen')));
+    }
   }
 }
 
@@ -124,6 +148,7 @@ export function mountQueuePanel(root) {
     jobs = next;
     render();
   });
+  onFollowChange(render);
   window.vitool.invoke('queue:list').then((next) => {
     jobs = next;
     render();

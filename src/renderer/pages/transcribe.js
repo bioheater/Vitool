@@ -2,7 +2,8 @@
 import { el, pageHeader } from '../utils/dom.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
-import { createSendTo } from '../components/send-to.js';
+import { createSendTo, createContinue } from '../components/send-to.js';
+import { draftBadge } from '../components/draft-badge.js';
 import { manageCard } from '../components/manage-card.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { t, formatNumber, LANGUAGE } from '../utils/i18n.js';
@@ -341,6 +342,7 @@ function showWorkspace(name, info) {
   state.batch = null;
   parts.batch.hidden = true;
   parts.sendTo.hidden = Boolean(state.link);
+  if (state.link) parts.badge.hidden = true;
   parts.name.textContent = name;
   parts.info.textContent = info;
   parts.start.disabled = !state.media;
@@ -463,6 +465,7 @@ function showMedia(media) {
   state.linkLoading = false;
   state.media = media;
   playLocal(media);
+  parts.badge.hidden = !media.draft;
   const details = media.hasVideo ? `${media.width} × ${media.height}` : t('nur Ton');
   showWorkspace(media.name, `${formatTime(media.duration)} · ${details}`);
 }
@@ -900,6 +903,7 @@ function renderBurn() {
   const noPicture = Boolean(state.media && !state.media.fromLink && !state.media.hasVideo);
   parts.burnCard.hidden = !ready;
   parts.burnButton.disabled = !ready || noPicture;
+  parts.burnContinue.disabled = parts.burnButton.disabled;
   parts.burnHint.textContent = noPicture
     ? t('Diese Datei hat kein Bild. Einbrennen geht nur bei Videos.')
     : state.media?.fromLink
@@ -999,16 +1003,21 @@ function watchOverlay() {
   step();
 }
 
-async function burn() {
-  setMessage('');
+function startBurn(draft = false) {
   const name = state.link?.title ?? state.media.name.replace(/\.[^.]+$/, '');
-  const response = await invoke('transcribe:burn', {
+  return invoke('transcribe:burn', {
     ...state.burn,
     transcript: state.transcript,
     filePath: state.media.path,
     linkUrl: state.media.fromLink ?? null,
     name,
+    draft,
   });
+}
+
+async function burn() {
+  setMessage('');
+  const response = await startBurn();
   if (!response.ok) {
     setMessage(response.error);
     return;
@@ -1036,6 +1045,7 @@ function buildBurnCard() {
   parts.colorRow = el('div', { class: 'marker-row' }, el('span', { class: 'muted slider-label' }, t('Farbe')), ...parts.swatches);
   parts.burnHint = el('p', { class: 'muted' });
   parts.burnButton = el('button', { class: 'button primary', onclick: burn }, t('Video mit Untertiteln erstellen'));
+  parts.burnContinue = createContinue({ exclude: 'transcribe', compact: true, start: () => startBurn(true), onError: setMessage });
   const preview = el('input', {
     type: 'checkbox',
     checked: state.burn.preview,
@@ -1052,7 +1062,7 @@ function buildBurnCard() {
     parts.colorRow,
     el('label', { class: 'check' }, preview, el('span', {}, t('Vorschau im Video zeigen'))),
     parts.burnHint,
-    el('div', {}, parts.burnButton),
+    el('div', { class: 'action-row' }, parts.burnButton, parts.burnContinue),
   );
   return parts.burnCard;
 }
@@ -1088,6 +1098,7 @@ function buildPage(root) {
     loadLink: el('button', { class: 'button primary', onclick: () => loadLink() }, t('Laden und transkribieren')),
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
+    badge: draftBadge(),
     info: el('p', { class: 'muted' }),
     fields: settingFields(),
     batchFields: settingFields(),
@@ -1172,7 +1183,7 @@ function buildPage(root) {
 
   parts.workspace.append(
     el('section', { class: 'card file-card' },
-      el('div', { class: 'video-text' }, parts.name, parts.info),
+      el('div', { class: 'video-text' }, parts.name, parts.info, parts.badge),
       el('div', { class: 'file-actions' }, parts.sendTo,
         el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),
     ),
@@ -1223,6 +1234,7 @@ function buildPage(root) {
 export default {
   id: 'transcribe',
   label: t('Transkribieren'),
+  hint: t('Gesprochenes erkennen und als Untertitel oder Text speichern.'),
   mount: buildPage,
   // Eine weitergegebene Datei öffnet sich nur, wenn Paket und Modell bereit sind.
   async onShow(data) {

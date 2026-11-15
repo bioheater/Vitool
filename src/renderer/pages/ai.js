@@ -4,7 +4,8 @@ import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { EffectPreview } from '../components/effect-preview.js';
 import { createFileDrop } from '../components/file-drop.js';
-import { createSendTo } from '../components/send-to.js';
+import { createSendTo, createContinue } from '../components/send-to.js';
+import { draftBadge } from '../components/draft-badge.js';
 import { manageCard } from '../components/manage-card.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { SectionEditor } from '../components/section-editor.js';
@@ -193,7 +194,8 @@ async function openFile(filePath) {
 
   const { media } = response;
   state.media = media;
-  state.folder = folderOf(media.path);
+  state.folder = media.homeFolder ?? folderOf(media.path);
+  parts.badge.hidden = !media.draft;
   resetSession();
 
   parts.name.textContent = media.name;
@@ -483,7 +485,7 @@ function changeRange() {
 }
 
 async function exportResult() {
-  const response = await invoke('ai:export', { ...effectOptions(), folder: state.folder });
+  const response = await invoke('ai:export', { ...effectOptions(), folder: state.folder, draft: false });
   setMessage(response.ok ? '' : response.error);
 }
 
@@ -545,6 +547,7 @@ function buildPage(root) {
     feather: el('input', { type: 'range', min: 0, max: 40, value: 0, 'aria-label': t('Weiche Kante'), oninput: updateSliderLabels }),
     featherValue: el('span', { class: 'muted slider-value' }),
     folder: el('span', { class: 'folder-path' }),
+    badge: draftBadge(),
   };
 
   effectPreview = new EffectPreview(player.video, parts.effect);
@@ -632,13 +635,14 @@ function buildPage(root) {
     ),
     el('div', { class: 'marker-row' },
       el('button', { class: 'button primary', onclick: exportResult }, t('Exportieren')),
+      createContinue({ exclude: 'ai', compact: true, start: () => invoke('ai:export', { ...effectOptions(), folder: state.folder, draft: true }), onError: setMessage }),
       el('button', { class: 'button small', onclick: redo }, t('Nachbessern')),
     ),
   );
 
   parts.workspace.append(
     el('section', { class: 'card file-card' },
-      el('div', { class: 'video-text' }, parts.name, parts.info),
+      el('div', { class: 'video-text' }, parts.name, parts.info, parts.badge),
       el('div', { class: 'file-actions' },
         createSendTo({ getPath: () => state.media?.path, exclude: 'ai' }),
         el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),
@@ -672,6 +676,7 @@ function buildPage(root) {
 export default {
   id: 'ai',
   label: t('KI-Maske'),
+  hint: t('Ein Objekt anklicken, die KI verfolgt es durchs Video.'),
   mount: buildPage,
   // Eine weitergegebene Datei öffnet sich nur, wenn Paket und Modell bereit sind.
   async onShow(data) {

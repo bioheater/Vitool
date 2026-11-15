@@ -8,7 +8,8 @@ const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run } = require('../core/process-runner');
 const { runFfmpeg } = require('../core/ffmpeg');
-const { moveFile } = require('../core/files');
+const { moveFile, listMediaFiles } = require('../core/files');
+const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 const { analyzeSync, readEnvelope } = require('../core/audio-sync');
 
@@ -17,6 +18,7 @@ const EXTRACT_EXTENSIONS = {
   aac: 'm4a', mp3: 'mp3', ac3: 'ac3', eac3: 'eac3', dts: 'dts', flac: 'flac', opus: 'opus', vorbis: 'ogg', truehd: 'thd',
 };
 const FALLBACK_EXTENSIONS = { video: 'mkv', audio: 'mka', subtitle: 'mks' };
+const VIDEO_EXTENSIONS = ['.mkv', '.mp4', '.m4v', '.webm', '.mov', '.avi', '.ts'];
 const CHANNEL_NAMES = { 1: 'Mono', 2: 'Stereo', 6: '5.1', 8: '7.1' };
 const MAX_OFFSET = 3600;
 const LOSSLESS = /^(flac|truehd|mlp|alac|pcm_)/;
@@ -198,7 +200,7 @@ function register({ ipcMain, queue, tools, send }) {
         '-metadata', `title=${options.title}`,
         output,
       ], { signal: job.signal });
-      return await moveFile(output, options.folder, `${name} (${t('bearbeitet')}).mkv`);
+      return await saveResult(output, options, `${name} (${t('bearbeitet')}).mkv`);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -216,12 +218,12 @@ function register({ ipcMain, queue, tools, send }) {
       track.gain = track.type === 'audio' ? Math.max(-30, Math.min(30, gain)) : 0;
     });
     if (!options.folder) return { ok: false, error: t('Bitte wähle einen Zielordner.') };
-    queue.add({
+    const jobId = queue.add({
       title: path.basename(options.files[0]),
       kind: 'mkv',
       run: (job) => runSave(options, kept, job),
     });
-    return { ok: true };
+    return { ok: true, jobId };
   });
 
   async function runExtract(options, job) {
@@ -323,6 +325,20 @@ function register({ ipcMain, queue, tools, send }) {
       return { ok: true, url: pathToFileURL(output).href };
     } catch (error) {
       return { ok: false, error: toGermanMessage(error) };
+    }
+  });
+
+  // Weitere Videos im selben Ordner, etwa die anderen Folgen einer Staffel. Frühere Ergebnisse
+  // ("… (bearbeitet).mkv") gehören nicht dazu.
+  ipcMain.handle('mkv:siblings', async (_event, filePath) => {
+    try {
+      const suffix = `(${t('bearbeitet')})`;
+      const files = await listMediaFiles(path.dirname(filePath));
+      return files.filter((file) => VIDEO_EXTENSIONS.includes(path.extname(file).toLowerCase())
+        && path.resolve(file) !== path.resolve(filePath)
+        && !path.parse(file).name.endsWith(suffix));
+    } catch {
+      return [];
     }
   });
 

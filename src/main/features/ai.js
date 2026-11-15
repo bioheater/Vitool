@@ -10,7 +10,7 @@ const { app } = require('electron');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
-const { moveFile } = require('../core/files');
+const { saveResult } = require('../core/drafts');
 const { exec, findGpu, folderSizeGb, downloadFile, pythonScript, createEnvironment, installPackages, cleanUvCache } = require('../core/python-tools');
 const { effectFilter, even } = require('./censor');
 const { t } = require('../core/i18n');
@@ -282,7 +282,7 @@ function register({ ipcMain, queue, store, tools, send }) {
           signal: job.signal,
           onProgress: (part) => job.update({ progress: part * 100, detail: t('Erstellt Alpha-Maske') }),
         });
-        return await moveFile(output, options.folder, `${name} (${t('Alpha-Maske')}).${ext}`);
+        return await saveResult(output, options, `${name} (${t('Alpha-Maske')}).${ext}`);
       }
 
       if (options.effect === 'transparent') {
@@ -296,7 +296,7 @@ function register({ ipcMain, queue, store, tools, send }) {
           signal: job.signal,
           onProgress: (part) => job.update({ progress: part * 100, detail: t('Stellt frei') }),
         });
-        return await moveFile(output, options.folder, `${name} (${t('freigestellt')}).webm`);
+        return await saveResult(output, options, `${name} (${t('freigestellt')}).webm`);
       }
 
       const output = path.join(temp, 'ergebnis.mp4');
@@ -319,7 +319,7 @@ function register({ ipcMain, queue, store, tools, send }) {
         signal: job.signal,
         onProgress: (part) => job.update({ progress: part * 100, detail: t('Rechnet Maske ein') }),
       });
-      return await moveFile(output, options.folder, `${name} (${t('KI-Maske')}).mp4`);
+      return await saveResult(output, options, `${name} (${t('KI-Maske')}).mp4`);
     } finally {
       await fs.rm(temp, { recursive: true, force: true }).catch(() => {});
     }
@@ -428,7 +428,8 @@ function register({ ipcMain, queue, store, tools, send }) {
 
   handle('ai:export', (options) => {
     if (!session?.tracked) throw new UserError(t('Bitte verfolge das Objekt zuerst.'));
-    queue.add({ title: session.media.name, kind: 'ai', run: (job) => runExport(options, job) });
+    const jobId = queue.add({ title: session.media.name, kind: 'ai', run: (job) => runExport(options, job) });
+    return { jobId };
   });
 
   register.dispose = () => {

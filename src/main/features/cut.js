@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { runFfmpeg, concatFiles, probeMedia } = require('../core/ffmpeg');
-const { moveFile } = require('../core/files');
+const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 
 function validate(options, media) {
@@ -64,13 +64,13 @@ function register({ ipcMain, queue, tools }) {
         job.update({ detail: t('Fügt Abschnitte zusammen …'), progress: null });
         const merged = path.join(tempDir, `gesamt${ext}`);
         await concatFiles(tools.path('ffmpeg'), pieces, merged, job.signal);
-        return await moveFile(merged, options.folder, `${baseName} (${t('geschnitten')})${ext}`);
+        return await saveResult(merged, options, `${baseName} (${t('geschnitten')})${ext}`);
       }
 
       let saved = null;
       for (const [index, piece] of pieces.entries()) {
         const suffix = pieces.length > 1 ? t('Teil {number}', { number: index + 1 }) : t('geschnitten');
-        saved = await moveFile(piece, options.folder, `${baseName} (${suffix})${ext}`);
+        saved = await saveResult(piece, options, `${baseName} (${suffix})${ext}`);
       }
       return saved;
     } finally {
@@ -82,12 +82,14 @@ function register({ ipcMain, queue, tools }) {
     try {
       const media = await probeMedia(tools.path('ffprobe'), options.filePath);
       validate(options, media);
-      queue.add({
+      // Weiterbearbeiten braucht genau eine Datei.
+      if (options.draft) options.merge = true;
+      const jobId = queue.add({
         title: media.name,
         kind: 'cut',
         run: (job) => runExport(options, media, job),
       });
-      return { ok: true };
+      return { ok: true, jobId };
     } catch (error) {
       return { ok: false, error: toGermanMessage(error) };
     }

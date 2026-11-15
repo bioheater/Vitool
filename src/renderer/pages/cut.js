@@ -3,7 +3,8 @@ import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
-import { createSendTo } from '../components/send-to.js';
+import { createSendTo, createContinue } from '../components/send-to.js';
+import { draftBadge } from '../components/draft-badge.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { SectionEditor } from '../components/section-editor.js';
 import { t } from '../utils/i18n.js';
@@ -25,7 +26,7 @@ function setMessage(text) {
   parts.message.hidden = !text;
 }
 
-async function openFile(filePath) {
+async function openFile(filePath, sections = null) {
   setMessage('');
   const response = await invoke('media:probe', filePath);
   if (!response.ok) {
@@ -35,7 +36,8 @@ async function openFile(filePath) {
 
   const { media } = response;
   state.media = media;
-  state.folder = folderOf(media.path);
+  state.folder = media.homeFolder ?? folderOf(media.path);
+  parts.badge.hidden = !media.draft;
 
   parts.name.textContent = media.name;
   parts.name.title = media.path;
@@ -47,6 +49,12 @@ async function openFile(filePath) {
   parts.folder.title = state.folder;
 
   editor.load(media.duration);
+  if (sections?.length) {
+    // Aus dem Bereich Ton: alles außer den Pausen, zusammengefügt und bildgenau.
+    editor.setRanges(sections, true);
+    editor.setPlayMode('result');
+    setMode('exact');
+  }
   editor.ensureRange();
   player.load(media);
   parts.drop.hidden = true;
@@ -78,14 +86,19 @@ async function chooseFolder() {
   parts.folder.title = folder;
 }
 
-async function exportFile() {
-  const response = await invoke('cut:export', {
+function cutOptions(draft = false) {
+  return {
     filePath: state.media.path,
     sections: editor.ranges,
     mode: state.mode,
     merge: editor.merge && editor.ranges.length > 1,
     folder: state.folder,
-  });
+    draft,
+  };
+}
+
+async function exportFile() {
+  const response = await invoke('cut:export', cutOptions());
   setMessage(response.ok ? '' : response.error);
 }
 
@@ -123,6 +136,7 @@ function buildPage(root) {
     modeExact: el('button', { class: 'segment', onclick: () => setMode('exact') }, t('Exakt')),
     modeHint: el('p', { class: 'muted' }),
     folder: el('span', { class: 'folder-path' }),
+    badge: draftBadge(),
   };
 
   player = new MediaPlayer();
@@ -131,7 +145,7 @@ function buildPage(root) {
 
   parts.workspace.append(
     el('section', { class: 'card file-card' },
-      el('div', { class: 'video-text' }, parts.name, parts.info),
+      el('div', { class: 'video-text' }, parts.name, parts.info, parts.badge),
       el('div', { class: 'file-actions' },
         createSendTo({ getPath: () => state.media?.path, exclude: 'cut' }),
         el('button', { class: 'button small', onclick: closeFile }, t('Andere Datei'))),
@@ -153,7 +167,9 @@ function buildPage(root) {
         parts.folder,
         el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern')),
       ),
-      el('div', {}, el('button', { class: 'button primary large', onclick: exportFile }, t('Exportieren'))),
+      el('div', { class: 'action-row' },
+        el('button', { class: 'button primary large', onclick: exportFile }, t('Exportieren')),
+        createContinue({ exclude: 'cut', start: () => invoke('cut:export', cutOptions(true)), onError: setMessage })),
     ),
   );
 
@@ -165,10 +181,11 @@ function buildPage(root) {
 export default {
   id: 'cut',
   label: t('Schneiden'),
+  hint: t('Abschnitte herausschneiden, verlustfrei oder bildgenau.'),
   mount: buildPage,
   onShow(data) {
     state.visible = true;
-    if (data?.filePath) openFile(data.filePath);
+    if (data?.filePath) openFile(data.filePath, data.sections);
   },
   onHide() {
     state.visible = false;

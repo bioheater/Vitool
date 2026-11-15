@@ -2,8 +2,15 @@
 import { el } from '../utils/dom.js';
 import { formatTime, parseTime } from '../utils/time.js';
 import { Timeline } from './timeline.js';
-import { frameButtons } from './video-controls.js';
+import { frameButtons, quietSeek } from './video-controls.js';
 import { t } from '../utils/i18n.js';
+
+const SKIP_TOLERANCE = 0.1;
+const PLAY_MODES = [
+  { id: 'loop', label: t('Abschnitt wiederholen'), hint: t('Spielt den gewählten Abschnitt in Schleife') },
+  { id: 'result', label: t('Ergebnis ansehen'), hint: t('Spielt alle Abschnitte nacheinander und überspringt, was wegfällt') },
+  { id: 'free', label: t('Ganzes Video'), hint: t('Spielt das Video ohne Sprünge und Schleife') },
+];
 
 export class SectionEditor {
   constructor({ video, onMessage, createRange, single = false }) {
@@ -16,6 +23,9 @@ export class SectionEditor {
     this.merge = false;
     this.looping = false;
     this.loopEnabled = true;
+    // loop: aktiven Abschnitt wiederholen, result: alle Abschnitte nacheinander wie im Ergebnis,
+    // free: das ganze Video ohne Sprünge.
+    this.playMode = 'loop';
 
     const timelineRoot = el('div', { class: 'timeline' });
     this.timeline = new Timeline(timelineRoot, {
@@ -35,13 +45,23 @@ export class SectionEditor {
     // Jede Instanz braucht eine eigene Gruppe, sonst beeinflussen sich die Seiten gegenseitig.
     this.mergeSeparate.name = this.mergeTogether.name = `merge-${Math.random()}`;
 
+    this.modeButtons = new Map(PLAY_MODES.map(({ id, label, hint }) => [id, el('button', {
+      class: 'segment',
+      title: hint,
+      onclick: () => this.setPlayMode(id),
+    }, label)]));
+
     this.root = el('div', { class: 'stack' },
-      el('div', { class: 'marker-row' }, ...frameButtons(video)),
+      el('div', { class: 'marker-row' },
+        ...frameButtons(video),
+        single ? null : el('span', { class: 'spacer' }),
+        single ? null : el('div', { class: 'segments', role: 'group', 'aria-label': t('Wiedergabe') }, ...this.modeButtons.values())),
       timelineRoot,
       this.list,
       single ? null : el('div', {}, el('button', { class: 'button', onclick: () => this.add() }, t('Abschnitt hinzufügen'))),
       this.mergeField,
     );
+    this.setPlayMode('loop');
 
     video.addEventListener('timeupdate', () => {
       this.keepInsideRange();
@@ -61,13 +81,46 @@ export class SectionEditor {
   }
 
   activeRange() {
-    return this.loopEnabled ? this.ranges[this.active] : undefined;
+    return this.loopEnabled && this.playMode === 'loop' ? this.ranges[this.active] : undefined;
+  }
+
+  setPlayMode(mode) {
+    this.playMode = mode;
+    this.modeButtons.forEach((button, id) => {
+      button.classList.toggle('active', id === mode);
+      button.setAttribute('aria-pressed', String(id === mode));
+    });
+  }
+
+  // Wie im fertigen Video: zwischen den Abschnitten springt der Player zum nächsten.
+  followSections() {
+    const { video } = this;
+    if (video.paused || video.seeking) return;
+    const time = video.currentTime;
+    const sorted = this.ranges.map((range, index) => ({ ...range, index })).sort((a, b) => a.start - b.start);
+    // Nach einem Sprung meldet der Player oft eine Zeit knapp vor dem Ziel, daher etwas Spielraum.
+    const inside = sorted.find((range) => time >= range.start - SKIP_TOLERANCE && time < range.end);
+    if (inside) {
+      if (inside.index !== this.active) this.select(inside.index);
+      return;
+    }
+    const next = sorted.find((range) => range.start > time);
+    if (next) {
+      quietSeek(video, next.start);
+      this.select(next.index);
+    } else {
+      video.pause();
+    }
   }
 
   // Beim Abspielen läuft das Video als Schleife durch den aktiven Abschnitt.
   startLoop() {
     const range = this.activeRange();
     if (range && this.video.currentTime < range.start) this.video.currentTime = range.start;
+    if (this.playMode === 'result' && this.loopEnabled) {
+      const last = Math.max(...this.ranges.map((entry) => entry.end));
+      if (this.video.currentTime >= last - SKIP_TOLERANCE) this.video.currentTime = Math.min(...this.ranges.map((entry) => entry.start));
+    }
     if (this.looping) return;
     this.looping = true;
 
@@ -84,18 +137,31 @@ export class SectionEditor {
   }
 
   keepInsideRange() {
+    if (this.playMode === 'result' && this.loopEnabled) {
+      this.followSections();
+      return;
+    }
     const range = this.activeRange();
     if (!range || this.video.paused || this.video.currentTime < range.end) return;
-    this.video.currentTime = range.start;
+    quietSeek(this.video, range.start);
   }
 
   load(duration) {
     this.duration = duration;
+    this.setPlayMode('loop');
     this.ranges = [];
     this.active = 0;
     this.merge = false;
     this.timeline.setDuration(duration);
     this.timeline.setPlayhead(0);
+  }
+
+  // Übernimmt fertige Abschnitte, etwa die Stellen ohne Pausen aus dem Bereich Ton.
+  setRanges(ranges, merge = false) {
+    this.ranges = ranges.map(({ start, end }) => ({ start, end }));
+    this.active = 0;
+    this.merge = merge;
+    this.render();
   }
 
   ensureRange() {

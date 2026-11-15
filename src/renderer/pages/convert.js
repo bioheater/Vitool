@@ -4,6 +4,8 @@ import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
+import { createContinue } from '../components/send-to.js';
+import { draftBadge } from '../components/draft-badge.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { t, formatNumber } from '../utils/i18n.js';
 
@@ -31,7 +33,11 @@ function preview() {
   return state.items.find((item) => item.media.hasVideo)?.media ?? state.items[0]?.media ?? null;
 }
 
-function options(item) {
+function homeOf(media) {
+  return media.homeFolder ?? folderOf(media.path);
+}
+
+function options(item, draft = false) {
   const isVideo = VIDEO_FORMATS.includes(state.format);
   const sizable = !UNSIZABLE_FORMATS.includes(state.format);
   return {
@@ -41,7 +47,8 @@ function options(item) {
     portrait: isVideo && parts.portrait.checked,
     cropPosition: state.cropPosition,
     targetSizeMb: sizable && parts.sizeToggle.checked ? Number(parts.sizeInput.value) || 0 : null,
-    folder: state.folder ?? folderOf(item.media.path),
+    folder: state.folder ?? homeOf(item.media),
+    draft,
   };
 }
 
@@ -80,6 +87,9 @@ async function updatePlan() {
   }
   parts.summary.hidden = !parts.summary.textContent;
   parts.start.disabled = ready.length === 0;
+  // Weiterbearbeiten geht nur mit einer einzelnen Datei.
+  parts.continueButton.hidden = state.items.length !== 1;
+  parts.continueButton.disabled = ready.length !== 1;
   parts.start.textContent = ready.length > 1 ? t('{count} Dateien konvertieren', { count: ready.length }) : t('Konvertieren');
   renderFileList();
 }
@@ -143,7 +153,8 @@ function renderHeader() {
     ? mediaInfo(first.media)
     : t('zusammen {size} MB', { size: formatNumber(state.items.reduce((sum, item) => sum + item.media.size, 0) / 1024 / 1024) });
   parts.fileList.hidden = single;
-  parts.folder.textContent = state.folder ?? (single ? folderOf(first.media.path) : t('Jeweils neben der Originaldatei'));
+  parts.folder.textContent = state.folder ?? (single ? homeOf(first.media) : t('Jeweils neben der Originaldatei'));
+  parts.badge.hidden = !(single && first.media.draft);
   parts.folder.title = parts.folder.textContent;
   parts.resetFolder.hidden = state.folder === null;
 }
@@ -235,7 +246,7 @@ async function pickFolderFiles() {
 }
 
 async function chooseFolder() {
-  const folder = await invoke('dialog:pickFolder', state.folder ?? folderOf(state.items[0].media.path));
+  const folder = await invoke('dialog:pickFolder', state.folder ?? homeOf(state.items[0].media));
   if (!folder) return;
   state.folder = folder;
   renderHeader();
@@ -331,6 +342,7 @@ function buildPage(root) {
     folder: el('span', { class: 'folder-path' }),
     resetFolder: el('button', { class: 'button small', hidden: true, onclick: resetFolder }, t('Wie Original')),
     start: el('button', { class: 'button primary large', onclick: startConvert }, t('Konvertieren')),
+    badge: draftBadge(),
   };
 
   parts.stage.append(parts.maskLeft, parts.maskRight);
@@ -366,10 +378,17 @@ function buildPage(root) {
     parts.sizeFields,
   );
 
+  parts.continueButton = createContinue({
+    exclude: 'convert',
+    start: () => (state.items[0]?.plan?.ok ? invoke('convert:start', options(state.items[0], true)) : null),
+    onError: setMessage,
+  });
+  parts.continueButton.hidden = true;
+
   parts.workspace.append(
     el('section', { class: 'card stack' },
       el('div', { class: 'file-card' },
-        el('div', { class: 'video-text' }, parts.name, parts.info),
+        el('div', { class: 'video-text' }, parts.name, parts.info, parts.badge),
         el('div', { class: 'marker-row' },
           el('button', { class: 'button small', onclick: () => parts.addFiles.click() }, t('Dateien hinzufügen')),
           el('button', { class: 'button small', onclick: closeFiles }, t('Alle entfernen')))),
@@ -389,7 +408,7 @@ function buildPage(root) {
         parts.resetFolder,
         el('button', { class: 'button small', onclick: chooseFolder }, t('Ändern')),
       ),
-      el('div', {}, parts.start),
+      el('div', { class: 'action-row' }, parts.start, parts.continueButton),
     ),
   );
 
@@ -404,6 +423,7 @@ function buildPage(root) {
 export default {
   id: 'convert',
   label: t('Konvertieren'),
+  hint: t('Format ändern oder auf eine Zielgröße bringen, auch für viele Dateien.'),
   mount: buildPage,
   onShow(data) {
     if (data?.filePath) openFiles([data.filePath]);

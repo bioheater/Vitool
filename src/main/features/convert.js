@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
-const { moveFile } = require('../core/files');
+const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 
 const MB = 1024 * 1024;
@@ -231,7 +231,7 @@ function register({ ipcMain, queue, tools }) {
       else await runSinglePass(media, plan, output, job);
 
       const suffix = options.targetSizeMb ? t('komprimiert') : t('konvertiert');
-      return await moveFile(output, options.folder, `${baseName} (${suffix}).${plan.format}`);
+      return await saveResult(output, options, `${baseName} (${suffix}).${plan.format}`);
     } finally {
       await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
@@ -251,12 +251,12 @@ function register({ ipcMain, queue, tools }) {
       const media = await probeMedia(tools.path('ffprobe'), options.filePath);
       const plan = buildPlan(options, media);
       if (!options.folder) throw new UserError(t('Bitte wähle einen Zielordner.'));
-      queue.add({
+      const jobId = queue.add({
         title: media.name,
         kind: 'convert',
         run: (job) => runConvert(options, media, plan, job),
       });
-      return { ok: true };
+      return { ok: true, jobId };
     } catch (error) {
       return { ok: false, error: toGermanMessage(error) };
     }
