@@ -1936,14 +1936,19 @@ body {
 }
 
 /* Was ist neu */
+/* Überschrift und Knopf bleiben stehen, nur die Liste dazwischen scrollt. Ohne minmax(0, 1fr)
+   wüchse die mittlere Zeile mit dem Text und das Fenster ragte über den Rand. */
 .whats-new-dialog {
+  grid-template-rows: auto minmax(0, 1fr) auto;
   max-height: min(80vh, 640px);
   max-width: 560px;
+  overflow: hidden;
 }
 
 .whats-new-body {
   min-height: 0;
   overflow-y: auto;
+  padding-right: 6px;
 }
 
 .whats-new-body h3 {
