@@ -1,5 +1,26 @@
 [
   {
+    "version": "0.5.0",
+    "de": [
+      "Neuer Bereich Ton: Pausen entfernen, Rauschen mindern und die Lautstärke angleichen. Pausen überspringt Vitool schon beim Abspielen, für Rauschen und Lautstärke gibt es eine kurze Hörprobe mit Vorher und Nachher.",
+      "„Audio extrahieren“ ist in den Bereich Ton umgezogen. Dort lässt sich der bearbeitete Ton auch gleich als MP3, M4A, WAV oder FLAC speichern.",
+      "Greenscreen in den Werkzeugen: Grün oder Blau ausstanzen, mit Vorschau. Als Hintergrund gehen eine Farbe, ein Bild, ein Video oder Transparenz.",
+      "Im MKV-Bereich gilt die Spurauswahl einer Folge auf Wunsch auch für die übrigen Folgen der Staffel.",
+      "„Weiter bearbeiten in“ schickt ein Ergebnis direkt in den nächsten Bereich, ohne es zu speichern. Gespeichert wird erst, wenn du exportierst.",
+      "Schneiden kann jetzt nur die behaltenen Abschnitte nacheinander abspielen oder das ganze Video, statt einen Abschnitt zu wiederholen.",
+      "Fährst du mit der Maus über die Seitenleiste, erklärt ein kurzer Satz jeden Bereich."
+    ],
+    "en": [
+      "New Audio area: remove pauses, reduce noise and even out loudness. Vitool already skips pauses while playing, and a short before-and-after preview lets you hear noise and loudness changes.",
+      "\"Extract audio\" moved to the Audio area. There you can also save the edited sound right away as MP3, M4A, WAV or FLAC.",
+      "Green screen in Tools: key out green or blue with a preview. The new background can be a color, an image, a video or transparent.",
+      "In the MKV area, the track choice of one episode can also be applied to the other episodes of the season.",
+      "\"Continue in\" sends a result straight to the next area without saving it. It is only saved when you export.",
+      "Cut can now play just the kept sections in a row, or the whole video, instead of looping one section.",
+      "Hovering over the sidebar shows a short sentence about each area."
+    ]
+  },
+  {
     "version": "0.4.0",
     "de": [
       "Mehrere Links auf einmal: Füge eine ganze Liste ein oder zieh eine Textdatei mit Links in den Download-Bereich. Du wählst aus, welche Videos Vitool lädt.",

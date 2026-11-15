@@ -5,7 +5,7 @@
 <h1 align="center">Vitool</h1>
 
 <p align="center">
-  An all-in-one video toolbox for Windows: download, cut, convert, censor, mask and transcribe.<br>
+  An all-in-one video toolbox for Windows: download, cut, convert, clean up audio, censor, mask and transcribe.<br>
   Everything runs on your own computer. Nothing is uploaded.
 </p>
 
@@ -35,6 +35,7 @@
 ### Cut
 - Lossless cuts in seconds, or frame-exact cuts when precision matters
 - Several sections at once, saved separately or joined into one file
+- Play just the kept sections in a row to check the result before saving
 
 ### Convert
 - MP4, MKV, WebM, MP3, WAV and more
@@ -43,11 +44,14 @@
 
 ### Tools
 - Create GIFs and save still images
-- Extract the audio track
 - Burn SRT, ASS or VTT subtitles into the picture
 - **Censor**: blur, pixelate or black out areas with moving, resizable and rotatable fields.
   Keyframes for position, size, strength and rotation, soft edges, several visible
   sections per field, and a choice between gliding and jumping between keyframes
+
+- **Green screen**: key out green or blue with a live preview. Vitool finds the color and a fitting
+  tolerance by itself and removes the color fringe. Replace the background with a color, an image,
+  a video, or keep it transparent as WebM or ProRes 4444
 
 ![Censoring with a rotated, pixelated field](docs/screenshots/censor.png)
 
@@ -59,8 +63,17 @@
   that slowly drift apart
 - Match a quiet track to the original volume, or make it louder or quieter by hand
 - Shift audio and subtitle tracks by a few seconds
+- Set up one episode and apply the same track choice to the rest of the season in one go
 
 ![Aligning a German dub with PAL speed detection](docs/screenshots/mkv.png)
+
+### Audio
+- **Remove pauses**: silent parts are found from the levels and cut out, picture and sound stay in sync.
+  While playing, Vitool already skips them, so you hear the result before exporting
+- **Reduce noise**: Vitool learns the noise from the quietest spot of the file, which also works for fans and hum
+- **Even out loudness** for online video (−14 LUFS), podcasts (−16) or TV (−23)
+- A short before-and-after preview for noise and loudness
+- Extract the audio track as MP3, M4A, WAV, FLAC or unchanged
 
 ### AI Mask (optional add-on)
 - Click an object, the AI finds its shape and tracks it through the video (SAM 2.1 by Meta)
@@ -78,6 +91,7 @@
 ### And also
 - Seven color themes with a subtle glass effect on Windows 11, English and German interface
 - Send a file from one area to the next, for example from Download to Cut
+- Continue in another area without saving in between: Vitool keeps a draft and only saves when you export
 - Updates from GitHub with one click in the settings
 
 ![Settings with color themes](docs/screenshots/settings.png)
