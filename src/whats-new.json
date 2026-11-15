@@ -1,5 +1,22 @@
 [
   {
+    "version": "0.4.0",
+    "de": [
+      "Mehrere Links auf einmal: Füge eine ganze Liste ein oder zieh eine Textdatei mit Links in den Download-Bereich. Du wählst aus, welche Videos Vitool lädt.",
+      "Kennt yt-dlp eine Seite nicht, sucht Vitool das Video jetzt von selbst: Es öffnet die Seite unsichtbar und startet das Video ohne Ton. Nur wenn das nicht klappt, öffnest du die Seite selbst.",
+      "Auf Übersichtsseiten ohne Video sammelt Vitool die Links zu den einzelnen Folgen und zeigt sie als Liste.",
+      "Untertitel, die der Player einer Seite lädt, speichert Vitool als SRT neben dem Video.",
+      "Streams aus vielen Einzelteilen laden deutlich schneller, und der Fortschrittsbalken springt nicht mehr auf 50 %."
+    ],
+    "en": [
+      "Several links at once: paste a whole list or drop a text file with links on the Download area. You choose which videos Vitool downloads.",
+      "If yt-dlp doesn't know a page, Vitool now finds the video by itself: it opens the page in the background and plays the video muted. Only if that fails do you open the page yourself.",
+      "On overview pages without a video, Vitool collects the links to the single episodes and shows them as a list.",
+      "Subtitles that a page's player loads are saved as SRT next to the video.",
+      "Streams made of many small pieces download much faster, and the progress bar no longer jumps to 50 %."
+    ]
+  },
+  {
     "version": "0.3.0",
     "de": [
       "yt-dlp hält sich jetzt selbst aktuell. Scheitert ein Download, holt Vitool die neueste Version und versucht es gleich noch einmal. Abschalten lässt sich das in den Einstellungen.",

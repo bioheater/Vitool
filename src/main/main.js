@@ -167,7 +167,7 @@ app.whenReady().then(() => {
 
   ipcMain.on('i18n:get', (event) => {
     // Das Farbschema kommt gleich mit, damit beim Start nichts im falschen Design aufblitzt.
-    event.returnValue = { language: currentLanguage(), strings: translations(), languages: LANGUAGES, theme: store.get('settings').theme ?? 'studio', glass: glassOn(store.get('settings').glass) };
+    event.returnValue = { language: currentLanguage(), strings: translations(), languages: LANGUAGES, theme: store.get('settings').theme ?? 'studio', glass: glassOn(store.get('settings').glass), dev: IS_DEV };
   });
   // Ein Sprachwechsel startet Vitool neu, damit wirklich jeder Text in der neuen Sprache erscheint.
   ipcMain.handle('app:setLanguage', (_event, language) => {

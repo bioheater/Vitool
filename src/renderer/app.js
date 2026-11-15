@@ -19,6 +19,8 @@ import { setupUpdateNotice } from './components/update-notice.js';
 import { showWhatsNew } from './components/whats-new-dialog.js';
 
 applyTheme(window.vitool.i18n.theme);
+// Die Entwicklerversion zeigt wie in der Taskleiste ein oranges DEV-Schild am Logo.
+if (window.vitool.i18n.dev) document.documentElement.dataset.dev = '';
 if (window.vitool.i18n.glass) applyGlass(true);
 
 // Neue Bereiche: Seite anlegen und hier eintragen.

@@ -2018,3 +2018,12 @@ body {
 .page-drop-inner strong {
   font-size: 18px;
 }
+
+/* Nur in der Entwicklerversion (npm start): DEV-Schild am Logo, wie beim Taskleistensymbol. */
+.brand-mark .dev-badge {
+  display: none;
+}
+
+:root[data-dev] .brand-mark .dev-badge {
+  display: inline;
+}

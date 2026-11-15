@@ -24,7 +24,9 @@
 ### Download
 - Paste a link from YouTube, Instagram, TikTok and many other sites, pick the quality, done
 - Audio only, single sections of a video, or whole playlists
-- If yt-dlp doesn't know a site, Vitool opens the page in its own window and downloads the video you play there
+- Paste many links at once or drop a text file with links to get a list to choose from
+- If yt-dlp doesn't know a site, Vitool finds the video on the page by itself, also on overview pages with many episodes,
+  and saves the player's subtitles as SRT
 - yt-dlp keeps itself up to date, and an optional YouTube sign-in helps with age-restricted or private videos
 - Download history with quick access to your files
 
