@@ -48,12 +48,13 @@
 - **Censor**: blur, pixelate or black out areas with moving, resizable and rotatable fields.
   Keyframes for position, size, strength and rotation, soft edges, several visible
   sections per field, and a choice between gliding and jumping between keyframes
-
 - **Green screen**: key out green or blue with a live preview. Vitool finds the color and a fitting
   tolerance by itself and removes the color fringe. Replace the background with a color, an image,
   a video, or keep it transparent as WebM or ProRes 4444
 
 ![Censoring with a rotated, pixelated field](docs/screenshots/censor.png)
+
+![Green screen with the bunny from Big Buck Bunny in front of a new sky](docs/screenshots/greenscreen.png)
 
 ### MKV
 - Remove unneeded audio tracks and subtitles without re-encoding
@@ -74,6 +75,8 @@
 - **Even out loudness** for online video (−14 LUFS), podcasts (−16) or TV (−23)
 - A short before-and-after preview for noise and loudness
 - Extract the audio track as MP3, M4A, WAV, FLAC or unchanged
+
+![Removing pauses and evening out loudness](docs/screenshots/audio.png)
 
 ### AI Mask (optional add-on)
 - Click an object, the AI finds its shape and tracks it through the video (SAM 2.1 by Meta)
