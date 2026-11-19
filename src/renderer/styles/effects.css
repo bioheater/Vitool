@@ -2312,3 +2312,100 @@ video.quiet-seek::-webkit-media-controls-panel {
 .season-status.warn {
   color: #e8b04a;
 }
+
+/* Download: weitere Tonspuren */
+.extra-languages summary {
+  color: var(--muted);
+  cursor: pointer;
+  width: fit-content;
+}
+
+.extra-languages[open] summary {
+  margin-bottom: 10px;
+}
+
+.extra-language-list {
+  display: grid;
+  gap: 6px 16px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  margin-bottom: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+/* Zusammenfassen */
+.summary-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+}
+
+.summary-result {
+  display: grid;
+  gap: 8px;
+  line-height: 1.55;
+}
+
+.summary-result h3 {
+  font-size: 15px;
+  margin: 10px 0 0;
+}
+
+.summary-result h3:first-child {
+  margin-top: 0;
+}
+
+.summary-result p {
+  margin: 0;
+}
+
+.summary-list {
+  display: grid;
+  gap: 5px;
+  list-style: disc;
+  margin: 0;
+  padding-left: 20px;
+}
+
+.summary-details summary {
+  color: var(--muted);
+  cursor: pointer;
+  width: fit-content;
+}
+
+.summary-transcript {
+  background: color-mix(in srgb, var(--well) 60%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  font: 12.5px/1.5 Consolas, 'Cascadia Mono', monospace;
+  margin: 10px 0 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+}
+
+.summary-command {
+  background: color-mix(in srgb, var(--well) 60%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  font: 13px Consolas, 'Cascadia Mono', monospace;
+  padding: 5px 10px;
+}
+
+.summary-online {
+  background: color-mix(in srgb, var(--well) 40%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-small);
+  padding: 12px 14px;
+}
+
+.summary-online .folder-row > .muted:first-child,
+.summary-online label.folder-row > .muted:first-child {
+  min-width: 64px;
+}
+
+.summary-notext {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}

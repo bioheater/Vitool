@@ -6,7 +6,7 @@ const { once } = require('events');
 const os = require('os');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
-const { runFfmpeg, probeMedia, videoEncoderArgs } = require('../core/ffmpeg');
+const { runFfmpeg, probeMedia, videoEncoderArgs, audioKbpsFor } = require('../core/ffmpeg');
 const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 
@@ -261,11 +261,11 @@ function register({ ipcMain, queue, tools }) {
     const mask = { width: maskWidth, height: even((maskWidth * video.height) / video.width) };
     const frameCount = Math.ceil(media.duration * fps) + 2;
     const audio = media.hasAudio
-      ? ['-map', '0:a:0', ...(['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k'])]
+      ? ['-map', '0:a:0', ...(['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', `${audioKbpsFor(media)}k`])]
       : [];
 
     try {
-      const encoder = await videoEncoderArgs(tools.path('ffmpeg'));
+      const encoder = await videoEncoderArgs(tools.path('ffmpeg'), { sourceKbps: media.videoKbps });
       const { filter, commands } = buildFilter(fields, video, mask, fps);
       for (const { file, content } of commands) await fs.writeFile(path.join(tempDir, file), content, 'utf8');
       await runFfmpeg(tools.path('ffmpeg'), [

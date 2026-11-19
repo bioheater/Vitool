@@ -18,12 +18,22 @@ const state = {
   playlist: null,
   playlistMode: 'video',
   finder: { url: null, open: false, items: [] },
+  languages: null,
+  extraLanguages: new Set(),
 };
 
 let parts = {};
 let editor = null;
 let stream = null;
 let previewStarted = false;
+let previewTimer = null;
+let previewRetries = 0;
+// Gibt YouTube eine Adresse noch nicht frei, klappt es oft beim zweiten Versuch kurz danach.
+const PREVIEW_RETRY_MS = 3000;
+const PREVIEW_RETRIES = 2;
+// Sicherheitsabstand zur Freigabezeit, falls die Uhr des PCs etwas abweicht.
+const PREVIEW_MARGIN_MS = 1500;
+const PREVIEW_MAX_WAIT_MS = 15000;
 
 // Mit fix steht ein Knopf daneben, der die Ursache behebt. Nach einem Update geht es mit retry weiter.
 function setMessage(text, fix = null, retry = null) {
@@ -445,11 +455,55 @@ function renderLanguages(languages) {
   const original = languages.filter((language) => language.original);
   const others = languages.filter((language) => !language.original)
     .sort((a, b) => languageName(a).localeCompare(languageName(b), LANGUAGE));
-  parts.audioLanguage.replaceChildren(...[...original, ...others].map((language) =>
-    el('option', { value: language.original ? '' : language.code }, languageLabel(language))));
-  if (!original.length) parts.audioLanguage.prepend(el('option', { value: '', selected: true }, t('Standard')));
-  parts.audioLanguage.value = '';
+  state.languages = [...original, ...others];
+  state.extraLanguages = new Set();
+  parts.audioLanguage.replaceChildren(...state.languages.map((language) =>
+    el('option', { value: language.code }, languageLabel(language))));
+  if (!original.length) parts.audioLanguage.prepend(el('option', { value: '' }, t('Standard')));
+  parts.audioLanguage.value = original[0]?.code ?? '';
   parts.languageField.hidden = languages.length < 2;
+  parts.extraLanguages.open = false;
+  renderExtraLanguages();
+}
+
+// Weitere Tonspuren zum Ankreuzen. Die Hauptspur fehlt in der Liste, sie ist ohnehin dabei.
+function renderExtraLanguages() {
+  const main = parts.audioLanguage.value;
+  state.extraLanguages.delete(main);
+  parts.extraList.replaceChildren(...state.languages.filter((language) => language.code !== main).map((language) => {
+    const box = el('input', {
+      type: 'checkbox',
+      checked: state.extraLanguages.has(language.code),
+      onchange: () => {
+        if (box.checked) state.extraLanguages.add(language.code);
+        else state.extraLanguages.delete(language.code);
+        renderExtraSummary();
+      },
+    });
+    return el('label', { class: 'check' }, box, el('span', {}, languageLabel(language)));
+  }));
+  renderExtraSummary();
+}
+
+function renderExtraSummary() {
+  const count = state.extraLanguages.size;
+  parts.extraSummary.textContent = count
+    ? t('Weitere Tonspuren mitladen: {count}', { count })
+    : t('Weitere Tonspuren mitladen');
+  parts.extraHint.hidden = count === 0;
+  // Nur ein Video kann mehrere Tonspuren enthalten, eine MP3 nicht.
+  parts.extraLanguages.hidden = parts.languageField.hidden || state.mode === 'audio';
+}
+
+// Die Hauptspur zuerst, sie wird in der Datei die Standardspur. Bleibt es beim Original allein, ist nichts zu tun.
+function chosenAudioTracks() {
+  if (parts.languageField.hidden) return [];
+  const byCode = new Map(state.languages.map((language) => [language.code, language]));
+  const main = byCode.get(parts.audioLanguage.value);
+  const extras = state.mode === 'audio' ? [] : [...state.extraLanguages].map((code) => byCode.get(code)).filter(Boolean);
+  const tracks = [main, ...extras].filter(Boolean);
+  if (tracks.length === 1 && tracks[0].original) return [];
+  return tracks.map((language) => ({ code: language.code, original: language.original, name: language.name }));
 }
 
 function renderOptions() {
@@ -459,6 +513,7 @@ function renderOptions() {
   parts.modeVideo.setAttribute('aria-pressed', String(!audio));
   parts.modeAudio.setAttribute('aria-pressed', String(audio));
   parts.qualityField.hidden = audio;
+  if (state.languages) renderExtraSummary();
 }
 
 function nextRange(duration, last) {
@@ -473,6 +528,9 @@ function showNoPreview() {
 }
 
 function stopPreview() {
+  clearTimeout(previewTimer);
+  previewTimer = null;
+  previewRetries = 0;
   stream?.destroy();
   stream = null;
   previewStarted = false;
@@ -481,12 +539,29 @@ function stopPreview() {
 }
 
 function startPreview() {
-  const { previewUrl, previewKind } = state.info;
+  const { info } = state;
+  const { previewUrl, previewAvailableAt } = info;
   parts.preview.hidden = !previewUrl;
   parts.previewHint.hidden = Boolean(previewUrl);
   if (!previewUrl || previewStarted) return;
   previewStarted = true;
+  parts.video.poster = info.thumbnail ?? '';
 
+  // YouTube gibt eine neue Adresse erst ein paar Sekunden nach der Abfrage frei und antwortet bis
+  // dahin mit "403 Forbidden". Bis dahin zeigt der Player das Vorschaubild.
+  const wait = previewAvailableAt ? previewAvailableAt * 1000 + PREVIEW_MARGIN_MS - Date.now() : 0;
+  if (wait > 0) {
+    previewTimer = setTimeout(() => {
+      previewTimer = null;
+      if (state.info === info) loadPreview();
+    }, Math.min(wait, PREVIEW_MAX_WAIT_MS));
+    return;
+  }
+  loadPreview();
+}
+
+function loadPreview() {
+  const { previewUrl, previewKind } = state.info;
   if (previewKind !== 'hls') {
     parts.video.src = previewUrl;
     return;
@@ -525,7 +600,7 @@ async function startDownload() {
     duration: info.duration,
     mode: state.mode,
     height: Number(parts.quality.value) || null,
-    audioLanguage: parts.languageField.hidden ? null : parts.audioLanguage.value || null,
+    audioTracks: chosenAudioTracks(),
     sections,
     exact: parts.exact.checked,
     merge: editor.merge && sections.length > 1,
@@ -601,7 +676,11 @@ function buildPage(root) {
     modeAudio: el('button', { class: 'segment', onclick: () => { state.mode = 'audio'; renderOptions(); } }, t('Nur Audio (MP3)')),
     quality: el('select', { class: 'input', 'aria-label': t('Qualität') }),
     qualityField: el('div', {}),
-    audioLanguage: el('select', { class: 'input', 'aria-label': t('Tonspur') }),
+    audioLanguage: el('select', { class: 'input', 'aria-label': t('Tonspur'), onchange: () => renderExtraLanguages() }),
+    extraLanguages: el('details', { class: 'extra-languages', hidden: true }),
+    extraSummary: el('summary', {}),
+    extraList: el('div', { class: 'extra-language-list' }),
+    extraHint: el('p', { class: 'muted', hidden: true }, t('Mit mehreren Tonspuren wird das Video als MKV gespeichert. Die oben gewählte Spur ist die Standardspur.')),
     languageField: el('label', { class: 'field', hidden: true }),
     sectionToggle: el('input', {
       type: 'checkbox',
@@ -689,12 +768,23 @@ function buildPage(root) {
   parts.preview.append(parts.video);
   parts.qualityField.append(parts.quality);
   parts.languageField.append(el('span', { class: 'muted' }, t('Tonspur')), parts.audioLanguage);
+  parts.extraLanguages.append(parts.extraSummary, parts.extraList, parts.extraHint);
   parts.sectionRow.append(parts.sectionToggle, el('span', { class: 'switch-track' }), t('Nur einen Abschnitt herunterladen'));
 
   editor = new SectionEditor({ video: parts.video, onMessage: setMessage, createRange: nextRange });
 
   parts.video.addEventListener('error', () => {
-    if (parts.video.getAttribute('src')) showNoPreview();
+    if (!parts.video.getAttribute('src')) return;
+    if (previewRetries < PREVIEW_RETRIES && state.info?.previewKind === 'file') {
+      previewRetries += 1;
+      const { info } = state;
+      previewTimer = setTimeout(() => {
+        previewTimer = null;
+        if (state.info === info && previewStarted) parts.video.load();
+      }, PREVIEW_RETRY_MS);
+      return;
+    }
+    showNoPreview();
   });
 
   parts.sections.append(
@@ -716,6 +806,7 @@ function buildPage(root) {
         parts.qualityField,
         parts.languageField,
       ),
+      parts.extraLanguages,
       parts.sectionRow,
       parts.sections,
     ),

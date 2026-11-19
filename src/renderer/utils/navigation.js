@@ -8,6 +8,7 @@ export const SEND_TARGETS = [
   { id: 'audio', label: t('Ton') },
   { id: 'ai', label: t('KI-Maske') },
   { id: 'transcribe', label: t('Transkribieren') },
+  { id: 'summary', label: t('Zusammenfassen') },
 ];
 
 const MEDIA_EXTENSIONS = ['mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v', 'ts', 'wmv', 'flv', 'mp3', 'm4a', 'wav', 'flac', 'ogg', 'opus', 'aac'];

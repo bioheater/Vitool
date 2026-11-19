@@ -4,7 +4,7 @@ const os = require('os');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run } = require('../core/process-runner');
-const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
+const { runFfmpeg, probeMedia, bitrateCap, audioKbpsFor } = require('../core/ffmpeg');
 const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 
@@ -84,7 +84,7 @@ async function subtitleSteps(options, media, tempDir, ffprobe) {
   const fontSize = SUBTITLE_FONT_SIZES[options.fontSize] ?? SUBTITLE_FONT_SIZES.mittel;
   const style = STYLABLE_SUBTITLES.includes(ext) ? `:force_style='FontSize=${fontSize}'` : '';
   const audio = media.hasAudio
-    ? ['-map', '0:a:0', ...(['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k'])]
+    ? ['-map', '0:a:0', ...(['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', `${audioKbpsFor(media)}k`])]
     : [];
   const output = path.join(tempDir, 'ergebnis.mp4');
 
@@ -95,7 +95,7 @@ async function subtitleSteps(options, media, tempDir, ffprobe) {
       '-i', media.path, '-map', '0:v:0', ...audio,
       // Über den relativen Namen entfallen die Sonderregeln für Windows-Pfade im Filter.
       '-vf', `subtitles=${localName}${encoding}${style}`,
-      '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output,
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', ...bitrateCap(media.videoKbps), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output,
     ],
     duration: media.duration,
     label: t('Brennt Untertitel ein'),

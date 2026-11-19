@@ -9,7 +9,7 @@ const { pathToFileURL } = require('url');
 const { app } = require('electron');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
-const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
+const { runFfmpeg, probeMedia, bitrateCap, audioKbpsFor } = require('../core/ffmpeg');
 const { saveResult } = require('../core/drafts');
 const { exec, findGpu, folderSizeGb, downloadFile, pythonScript, createEnvironment, installPackages, cleanUvCache } = require('../core/python-tools');
 const { effectFilter, even } = require('./censor');
@@ -301,7 +301,7 @@ function register({ ipcMain, queue, store, tools, send }) {
 
       const output = path.join(temp, 'ergebnis.mp4');
       const audio = media.hasAudio
-        ? ['-map', '0:a:0', ...(['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k'])]
+        ? ['-map', '0:a:0', ...(['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', `${audioKbpsFor(media)}k`])]
         : [];
       const filter = [
         `[0:v]fps=${fps},scale=${video.width}:${video.height},format=yuv420p,split[keep][src]`,
@@ -313,7 +313,7 @@ function register({ ipcMain, queue, store, tools, send }) {
       ].join(';');
       await runFfmpeg(tools.path('ffmpeg'), [
         '-i', media.path, ...masks, '-filter_complex', filter, '-map', '[out]', ...audio,
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output,
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', ...bitrateCap(media.videoKbps), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output,
       ], {
         duration: media.duration,
         signal: job.signal,

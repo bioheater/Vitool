@@ -1,5 +1,7 @@
 // Bereich Transkribieren: Zusatzpaket einrichten, Gesprochenes erkennen, Text prüfen und speichern.
-import { el, pageHeader } from '../utils/dom.js';
+import { el, icon, pageHeader } from '../utils/dom.js';
+import { ICONS } from '../utils/icons.js';
+import { sendTo } from '../utils/navigation.js';
 import { formatTime } from '../utils/time.js';
 import { createFileDrop } from '../components/file-drop.js';
 import { createSendTo, createContinue } from '../components/send-to.js';
@@ -855,6 +857,19 @@ function highlightCurrent() {
   }
 }
 
+function summarizeTranscript() {
+  if (!state.transcript?.segments?.length) return;
+  const title = state.link?.title ?? state.media.name.replace(/.[^.]+$/, '');
+  sendTo('summary', null, {
+    transcript: {
+      title,
+      language: state.transcript.language ?? null,
+      speakerNames: state.transcript.speakerNames ?? null,
+      segments: state.transcript.segments.map(({ start, text, speaker }) => ({ start, text, speaker })),
+    },
+  });
+}
+
 async function save(format) {
   setMessage('');
   const response = await invoke('transcribe:export', {
@@ -1156,6 +1171,9 @@ function buildPage(root) {
       onclick: () => save(format),
     }, el('strong', {}, text), el('span', { class: 'muted' }, hint)))),
     parts.saved,
+    // Der erkannte Text geht direkt in den Bereich Zusammenfassen, ohne ihn erst zu speichern.
+    el('div', { class: 'action-row' },
+      el('button', { class: 'button continue-button', onclick: summarizeTranscript }, icon(ICONS.summary), t('Zusammenfassen'))),
   );
   // Ohne Text steht hier, was passiert. So bleibt die rechte Spalte nie leer.
   parts.waitTitle = el('strong', {});
@@ -1239,6 +1257,12 @@ export default {
   // Eine weitergegebene Datei öffnet sich nur, wenn Paket und Modell bereit sind.
   async onShow(data) {
     await refresh();
+    // Aus Zusammenfassen: Ein Link ohne Untertitel kommt zum Transkribieren hierher.
+    if (data?.url) {
+      parts.url.value = data.url;
+      parts.url.focus();
+      return;
+    }
     if (!data?.filePath) return;
     const ready = state.status.installed && state.status.models.some((model) => model.downloaded);
     if (ready) openFile(data.filePath);

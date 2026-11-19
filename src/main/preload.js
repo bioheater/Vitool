@@ -43,6 +43,19 @@ const INVOKE_CHANNELS = [
   'convert:start',
   'dialog:pickSubtitle',
   'dialog:pickBackground',
+  'dialog:pickSummarySource',
+  'summary:status',
+  'summary:openOllama',
+  'summary:load',
+  'summary:start',
+  'summary:cancel',
+  'summary:save',
+  'summary:fromTranscript',
+  'summary:onlineConfig',
+  'summary:onlineSave',
+  'summary:onlineForget',
+  'summary:onlineModels',
+  'summary:openKeyPage',
   'tools:start',
   'dialog:pickTrack',
   'dialog:pickVideos',
@@ -104,7 +117,7 @@ const INVOKE_CHANNELS = [
   'app:setTitleBar',
 ];
 
-const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'download:pageMedia', 'mkv:syncProgress', 'mkv:loudnessProgress', 'audio:levelsProgress', 'audio:previewProgress', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged', 'update:status', 'ytdlp:status', 'signin:status'];
+const EVENT_CHANNELS = ['queue:update', 'download:historyChanged', 'download:pageMedia', 'mkv:syncProgress', 'mkv:loudnessProgress', 'audio:levelsProgress', 'audio:previewProgress', 'summary:progress', 'app:openInCut', 'ai:statusChanged', 'transcribe:statusChanged', 'update:status', 'ytdlp:status', 'signin:status'];
 
 contextBridge.exposeInMainWorld('vitool', {
   invoke(channel, ...args) {

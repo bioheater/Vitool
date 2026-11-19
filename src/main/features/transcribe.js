@@ -8,7 +8,7 @@ const { pathToFileURL } = require('url');
 const { app, BrowserWindow, dialog, shell } = require('electron');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
-const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
+const { runFfmpeg, probeMedia, bitrateCap, audioKbpsFor } = require('../core/ffmpeg');
 const {
   exec, findGpu, folderSizeGb, downloadFile, pythonScript, createEnvironment, installPackages, uninstallPackages, cleanUvCache,
 } = require('../core/python-tools');
@@ -375,14 +375,14 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
       await fs.writeFile(path.join(temp, 'untertitel.ass'), toAss(options.transcript, options, { width: media.width, height: media.height }), 'utf8');
       const output = path.join(temp, 'ergebnis.mp4');
       const audio = media.hasAudio
-        ? ['-map', '0:a:0', ...(['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k'])]
+        ? ['-map', '0:a:0', ...(['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', `${audioKbpsFor(media)}k`])]
         : [];
       const start = fromLink ? 40 : 0;
       await runFfmpeg(tools.path('ffmpeg'), [
         '-i', source, '-map', '0:v:0', ...audio,
         // Über den relativen Namen entfallen die Sonderregeln für Windows-Pfade im Filter.
         '-vf', 'subtitles=untertitel.ass',
-        '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output,
+        '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', ...bitrateCap(media.videoKbps), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output,
       ], {
         cwd: temp,
         duration: media.duration,

@@ -7,6 +7,7 @@ import mkvPage from './pages/mkv.js';
 import audioPage from './pages/audio.js';
 import aiPage from './pages/ai.js';
 import transcribePage from './pages/transcribe.js';
+import summaryPage from './pages/summary.js';
 import settingsPage from './pages/settings.js';
 import { mountQueuePanel } from './components/queue-panel.js';
 import { checkTools } from './components/tools-dialog.js';
@@ -26,7 +27,7 @@ if (window.vitool.i18n.dev) document.documentElement.dataset.dev = '';
 if (window.vitool.i18n.glass) applyGlass(true);
 
 // Neue Bereiche: Seite anlegen und hier eintragen.
-const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage, audioPage, aiPage, transcribePage, settingsPage];
+const pages = [downloadPage, cutPage, convertPage, toolsPage, mkvPage, audioPage, aiPage, transcribePage, summaryPage, settingsPage];
 
 const nav = document.getElementById('nav');
 const navBottom = document.getElementById('nav-bottom');

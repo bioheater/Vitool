@@ -8,11 +8,12 @@ const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
 const { concatFiles } = require('../core/ffmpeg');
 const { moveFile } = require('../core/files');
-const { t } = require('../core/i18n');
+const { t, currentLanguage } = require('../core/i18n');
 const { createPageFinder } = require('./page-finder');
 
 const FILE_MARKER = 'VITOOLFILE|';
 const PROGRESS_MARKER = 'VITOOLPROGRESS|';
+const LANGUAGE_MARKER = 'VITOOLLANG|';
 const HISTORY_LIMIT = 200;
 const SECTION_REQUEST_BYTES = 5_000_000;
 const SUBTITLE_LIMIT = 5;
@@ -58,10 +59,10 @@ function pickPreview(formats) {
   const smallest = (list) => list.find((format) => (format.height ?? 0) >= 360) ?? list.at(-1);
 
   const file = smallest(withPicture.filter((format) => format.ext === 'mp4' && /^https?$/.test(format.protocol ?? '')));
-  if (file) return { url: file.url, kind: 'file', headers: file.http_headers };
+  if (file) return { url: file.url, kind: 'file', headers: file.http_headers, availableAt: file.available_at };
 
   const stream = smallest(withPicture.filter((format) => (format.protocol ?? '').startsWith('m3u8')));
-  return stream ? { url: stream.url, kind: 'hls', headers: stream.http_headers } : null;
+  return stream ? { url: stream.url, kind: 'hls', headers: stream.http_headers, availableAt: stream.available_at } : null;
 }
 
 // Tonsprachen, wenn ein Video mehrere hat, bei YouTube etwa Synchronfassungen. Das Original steht vorn.
@@ -83,6 +84,34 @@ function audioLanguages(formats) {
 
 // Sprachkürzel wie "de", "pt-BR" oder "zh-Hans". Alles andere wird ignoriert.
 const LANGUAGE_CODE = /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/i;
+const MAX_AUDIO_TRACKS = 8;
+// MP4 und MKV erwarten dreistellige Kürzel (ISO 639-2). Sie stehen auch so im MKV-Bereich.
+const ISO_639_2 = {
+  ar: 'ara', bn: 'ben', cs: 'cze', da: 'dan', de: 'ger', el: 'gre', en: 'eng', es: 'spa', fa: 'per', fi: 'fin',
+  fil: 'fil', fr: 'fre', gu: 'guj', he: 'heb', hi: 'hin', hu: 'hun', id: 'ind', it: 'ita', ja: 'jpn', kn: 'kan',
+  ko: 'kor', ml: 'mal', mr: 'mar', ms: 'may', nb: 'nob', nl: 'dut', no: 'nor', pa: 'pan', pl: 'pol', pt: 'por',
+  ro: 'rum', ru: 'rus', sv: 'swe', ta: 'tam', te: 'tel', th: 'tha', tl: 'tgl', tr: 'tur', uk: 'ukr', ur: 'urd',
+  uz: 'uzb', vi: 'vie', zh: 'chi',
+};
+
+// Gewählte Tonspuren in ihrer Reihenfolge, die erste wird die Standardspur. Ungültiges fällt weg.
+function audioTracksOf(options) {
+  const seen = new Set();
+  return (Array.isArray(options.audioTracks) ? options.audioTracks : [])
+    .filter((track) => LANGUAGE_CODE.test(track?.code ?? '') && !seen.has(track.code) && seen.add(track.code))
+    .slice(0, MAX_AUDIO_TRACKS)
+    .map((track) => ({ code: track.code, original: Boolean(track.original), name: String(track.name ?? '').slice(0, 60) }));
+}
+
+// Was yt-dlp laden soll: mehrere Spuren in eine MKV, eine einzelne Spur in einer anderen Sprache,
+// oder nichts Besonderes. Bei Nur-Audio passt immer nur eine Spur in die MP3.
+function audioPlan(options) {
+  const tracks = audioTracksOf(options);
+  if (options.mode !== 'audio' && tracks.length > 1) return { tracks, multi: true, suffix: tracks.map((track) => track.code).join('+') };
+  const [first] = tracks;
+  if (first && !first.original) return { tracks: [first], multi: false, suffix: first.code };
+  return { tracks: [], multi: false, suffix: null };
+}
 
 function normalizeInfo(raw, url) {
   const info = raw.entries ? raw.entries.find(Boolean) : raw;
@@ -114,6 +143,8 @@ function normalizeInfo(raw, url) {
     previewUrl: preview?.url ?? null,
     previewKind: preview?.kind ?? null,
     previewHeaders: preview?.headers ?? null,
+    // YouTube gibt neue Adressen erst nach ein paar Sekunden frei, vorher antwortet es mit 403.
+    previewAvailableAt: preview?.availableAt ?? null,
     playlist,
   };
 }
@@ -188,21 +219,50 @@ function safeFolderName(name) {
   return name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '').replace(/[. ]+$/, '').trim().slice(0, 120) || 'Playlist';
 }
 
+// yt-dlp übernimmt die Sprache nicht in die Datei. Ohne sie stünde im MKV-Bereich überall "Unbestimmt".
+// Die Spuren kommen in der gewählten Reihenfolge, die erste ist die Standardspur. Nur umverpackt, nicht neu kodiert.
+async function labelAudioTracks(tools, file, tracks, signal) {
+  const { stdout } = await run(tools.path('ffprobe'), [
+    '-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', file,
+  ]).catch(() => ({ stdout: '' }));
+  const count = stdout.split(/\r?\n/).filter(Boolean).length;
+  if (count !== tracks.length) return;
+  const names = new Intl.DisplayNames([currentLanguage()], { type: 'language' });
+  const args = ['-i', file, '-map', '0', '-c', 'copy'];
+  tracks.forEach((track, index) => {
+    let label = track.name;
+    try {
+      label = names.of(track.code) ?? label;
+    } catch {
+      // Unbekanntes Kürzel: dann bleibt der Name von YouTube.
+    }
+    if (label) label = label[0].toUpperCase() + label.slice(1);
+    if (track.original) label = `${label} (${t('Original')})`;
+    args.push(`-metadata:s:a:${index}`, `language=${ISO_639_2[track.code.split('-')[0].toLowerCase()] ?? 'und'}`);
+    if (label) args.push(`-metadata:s:a:${index}`, `title=${label}`);
+    args.push(`-disposition:a:${index}`, index === 0 ? 'default' : '0');
+  });
+  const temp = file.replace(/(\.[^.]+)$/, '.sprachen$1');
+  await run(tools.path('ffmpeg'), ['-hide_banner', '-nostdin', '-y', ...args, ...(file.endsWith('.mp4') ? ['-movflags', '+faststart'] : []), temp], { signal });
+  await fs.rename(temp, file);
+}
+
 function buildArgs(options, tools, tempDir) {
   const { url, mode, height, sections, exact, headers } = options;
   const hasSections = sections.length > 0;
   // Ein auf der Seite gefundener Stream heißt meist nur "master", der Titel kommt dann von der Seite.
   const baseTitle = options.pageUrl && options.title ? safeFolderName(options.title).replace(/%/g, '%%') : '%(title).120B';
   // Eine andere Tonsprache steht im Dateinamen. So überschreiben sich zwei Fassungen nicht gegenseitig.
-  const language = LANGUAGE_CODE.test(options.audioLanguage ?? '') ? options.audioLanguage : null;
-  const title = language ? `${baseTitle} [${language}]` : baseTitle;
+  const plan = audioPlan(options);
+  const title = plan.suffix ? `${baseTitle} [${plan.suffix}]` : baseTitle;
   const name = hasSections
     ? `${title} [%(section_start).1f-%(section_end).1f].%(ext)s`
     : `${title}.%(ext)s`;
   // Fehlt die Sprache doch einmal, lädt yt-dlp die übliche Tonspur statt abzubrechen.
   // Beim Bild steht dann "bv" statt "bv*": Sonst nimmt yt-dlp bei kleiner Auflösung eine
   // fertige Datei mit Bild und Originalton und lässt die gewählte Tonspur weg.
-  const pick = language ? `[language=${language}]` : null;
+  const pick = plan.tracks.length === 1 ? `[language=${plan.tracks[0].code}]` : null;
+  const several = plan.multi ? plan.tracks.map((track) => `ba[language=${track.code}]`).join('+') : null;
 
   const args = [
     ...commonArgs(tools),
@@ -214,6 +274,8 @@ function buildArgs(options, tools, tempDir) {
     '--no-quiet',
     '--progress-template', `download:${PROGRESS_MARKER}%(progress._percent|)s|%(progress._speed_str|)s|%(progress._eta_str|)s`,
     '--print', `after_move:${FILE_MARKER}%(filepath)s`,
+    // Welche Sprachen tatsächlich geladen wurden, etwa "de+en". Fehlt eine, weicht yt-dlp aus.
+    '--print', `after_move:${LANGUAGE_MARKER}%(language|)s`,
     '-P', tempDir,
     '-o', name,
   ];
@@ -222,8 +284,14 @@ function buildArgs(options, tools, tempDir) {
     args.push('-f', pick ? `ba${pick}/b${pick}/ba/b` : 'ba/b', '-x', '--audio-format', 'mp3', '--audio-quality', '0');
   } else {
     // Die Auflösung muss zuerst stehen, sonst gewinnt H.264 auch bei niedriger Qualität.
-    args.push('-f', pick ? `bv+ba${pick}/b${pick}/bv*+ba/b` : 'bv*+ba/b', '-S', `${height ? `res:${height}` : 'res'},vcodec:h264,acodec:aac`);
-    args.push('--merge-output-format', 'mp4');
+    let format = 'bv*+ba/b';
+    // Ausweichen ohne "*": Mit mehreren Tonspuren würde yt-dlp sonst den Ton einer fertigen Datei zusätzlich anhängen.
+    if (several) format = `bv+${several}/bv+ba/b`;
+    else if (pick) format = `bv+ba${pick}/b${pick}/bv*+ba/b`;
+    args.push('-f', format, '-S', `${height ? `res:${height}` : 'res'},vcodec:h264,acodec:aac`);
+    // Mehrere Tonspuren passen zuverlässig nur in eine MKV.
+    if (several) args.push('--audio-multistreams', '--merge-output-format', 'mkv');
+    else args.push('--merge-output-format', 'mp4');
   }
 
   sections.forEach(({ start, end }) => {
@@ -354,6 +422,7 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vitool-'));
     const sectionCount = options.sections.length;
     const files = [];
+    const loadedLanguages = [];
     let finishedSections = 0;
     // Wie viele Teile yt-dlp lädt (Video und Ton getrennt oder zusammen) und beim wievielten es ist.
     let streamCount = 1;
@@ -362,6 +431,7 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
     // Ein neuer Versuch beginnt bei null, sonst stimmen Dateiliste und Fortschritt nicht.
     const reset = () => {
       files.length = 0;
+      loadedLanguages.length = 0;
       finishedSections = 0;
       streamCount = 1;
       stream = -1;
@@ -397,10 +467,12 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
     };
 
     const onLine = (line) => {
-      const formats = /Downloading d+ format(s): (S+)/.exec(line);
+      const formats = /Downloading \d+ format\(s\): (\S+)/.exec(line);
       if (formats) streamCount = formats[1].split('+').length;
       if (line.startsWith('[download] Destination:')) stream = Math.min(stream + 1, streamCount - 1);
-      if (line.startsWith(FILE_MARKER)) {
+      if (line.startsWith(LANGUAGE_MARKER)) {
+        loadedLanguages.push(line.slice(LANGUAGE_MARKER.length).trim());
+      } else if (line.startsWith(FILE_MARKER)) {
         files.push(line.slice(FILE_MARKER.length).trim());
       } else if (line.startsWith(PROGRESS_MARKER)) {
         const [percent, speed, eta] = line.slice(PROGRESS_MARKER.length).split('|');
@@ -440,6 +512,13 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
         await download(current);
       }
       if (files.length === 0) throw new Error(t('Keine Datei erhalten'));
+      const plan = audioPlan(current);
+      const expected = plan.tracks.map((track) => track.code).join('+');
+      // Beschriftet wird nur, wenn yt-dlp genau die gewählten Sprachen geladen hat.
+      if (current.mode !== 'audio' && plan.tracks.length && loadedLanguages.length && loadedLanguages.every((value) => value === expected)) {
+        job.update({ detail: t('Benennt Tonspuren …'), progress: null });
+        for (const file of files) await labelAudioTracks(tools, file, plan.tracks, job.signal);
+      }
 
       let results = files;
       if (options.merge && files.length > 1) {

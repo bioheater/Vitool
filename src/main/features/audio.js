@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
 const { run, CanceledError } = require('../core/process-runner');
-const { runFfmpeg, probeMedia, videoEncoderArgs } = require('../core/ffmpeg');
+const { runFfmpeg, probeMedia, videoEncoderArgs, audioKbpsFor } = require('../core/ffmpeg');
 const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 
@@ -181,7 +181,20 @@ async function measureLoudness(ffmpeg, filePath, options, info, sections, tempDi
   return parseLoudnorm(stderr);
 }
 
+// Die festen Raten oben sind Obergrenzen. Hat die Quelle weniger, wird der Ton nicht größer als sie.
+function matchSourceRate(plan, media) {
+  const index = plan.args.indexOf('-b:a');
+  if (index < 0) return plan;
+  const args = [...plan.args];
+  args[index + 1] = `${audioKbpsFor(media, Number.parseInt(args[index + 1], 10))}k`;
+  return { ...plan, args };
+}
+
 function outputPlan(media, reencodeVideo, format, sampleRate) {
+  return matchSourceRate(basePlan(media, reencodeVideo, format, sampleRate), media);
+}
+
+function basePlan(media, reencodeVideo, format, sampleRate) {
   const audioOnly = AUDIO_ONLY[format];
   if (audioOnly) return { ...audioOnly, rate: audioOnly.maxRate ? Math.min(audioOnly.maxRate, sampleRate) : undefined, video: null };
   const source = path.extname(media.path).toLowerCase();
@@ -302,7 +315,7 @@ function register({ ipcMain, queue, tools, send }) {
       await fs.writeFile(path.join(tempDir, 'filter.txt'), graph.join(';\n'), 'utf8');
 
       const videoMap = !plan.video ? [] : sections ? ['-map', '[v]'] : ['-map', '0:v:0'];
-      const videoCodec = !plan.video ? [] : plan.video === 'copy' ? ['-c:v', 'copy'] : await videoEncoderArgs(ffmpeg);
+      const videoCodec = !plan.video ? [] : plan.video === 'copy' ? ['-c:v', 'copy'] : await videoEncoderArgs(ffmpeg, { sourceKbps: media.videoKbps });
       const output = path.join(tempDir, `ergebnis${plan.ext}`);
       const edited = hasEdits(options);
       const label = sections ? t('Entfernt Pausen') : edited ? t('Bearbeitet den Ton') : t('Extrahiert Audio');

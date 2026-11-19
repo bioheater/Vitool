@@ -11,7 +11,8 @@ import { t } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
 
-const state = { media: null, mode: 'fast', folder: null, visible: false };
+// autoExact: Der exakte Modus kam vom Bereich Ton, nicht von dir. Beim nächsten Video gilt wieder Schnell.
+const state = { media: null, mode: 'fast', folder: null, visible: false, autoExact: false };
 let parts = {};
 let player = null;
 let editor = null;
@@ -53,7 +54,11 @@ async function openFile(filePath, sections = null) {
     // Aus dem Bereich Ton: alles außer den Pausen, zusammengefügt und bildgenau.
     editor.setRanges(sections, true);
     editor.setPlayMode('result');
+    if (state.mode !== 'exact') state.autoExact = true;
     setMode('exact');
+  } else if (state.autoExact) {
+    state.autoExact = false;
+    setMode('fast');
   }
   editor.ensureRange();
   player.load(media);
@@ -69,8 +74,9 @@ function closeFile() {
   parts.drop.hidden = false;
 }
 
-function setMode(mode) {
+function setMode(mode, chosen = false) {
   state.mode = mode;
+  if (chosen) state.autoExact = false;
   parts.modeFast.classList.toggle('active', mode === 'fast');
   parts.modeExact.classList.toggle('active', mode === 'exact');
   parts.modeFast.setAttribute('aria-pressed', String(mode === 'fast'));
@@ -132,8 +138,8 @@ function buildPage(root) {
     workspace: el('div', { class: 'stack', hidden: true }),
     name: el('h2', { class: 'file-name' }),
     info: el('p', { class: 'muted' }),
-    modeFast: el('button', { class: 'segment', onclick: () => setMode('fast') }, t('Schnell')),
-    modeExact: el('button', { class: 'segment', onclick: () => setMode('exact') }, t('Exakt')),
+    modeFast: el('button', { class: 'segment', onclick: () => setMode('fast', true) }, t('Schnell')),
+    modeExact: el('button', { class: 'segment', onclick: () => setMode('exact', true) }, t('Exakt')),
     modeHint: el('p', { class: 'muted' }),
     folder: el('span', { class: 'folder-path' }),
     badge: draftBadge(),

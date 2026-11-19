@@ -3,7 +3,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
-const { runFfmpeg, concatFiles, probeMedia } = require('../core/ffmpeg');
+const { runFfmpeg, concatFiles, probeMedia, videoEncoderArgs, audioKbpsFor } = require('../core/ffmpeg');
 const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 
@@ -21,15 +21,15 @@ function outputExtension(options, media) {
   return media.hasVideo ? '.mp4' : '.m4a';
 }
 
-function sectionArgs({ start, end }, options, media, output) {
+function sectionArgs({ start, end }, options, media, output, encoder) {
   const range = ['-ss', start.toFixed(3), '-to', end.toFixed(3), '-i', media.path];
 
   if (options.mode === 'fast') {
     return [...range, '-map', '0:v:0?', '-map', '0:a?', '-c', 'copy', '-avoid_negative_ts', 'make_zero', output];
   }
-  const audio = media.hasAudio ? ['-map', '0:a:0', '-c:a', 'aac', '-b:a', '192k'] : [];
+  const audio = media.hasAudio ? ['-map', '0:a:0', '-c:a', 'aac', '-b:a', `${audioKbpsFor(media)}k`] : [];
   const video = media.hasVideo
-    ? ['-map', '0:v:0', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p']
+    ? ['-map', '0:v:0', ...encoder]
     : [];
   return [...range, ...video, ...audio, output];
 }
@@ -45,13 +45,14 @@ function register({ ipcMain, queue, tools }) {
     let finished = 0;
 
     try {
+      const encoder = options.mode === 'fast' ? [] : await videoEncoderArgs(tools.path('ffmpeg'), { sourceKbps: media.videoKbps });
       for (const [index, section] of sections.entries()) {
         const length = section.end - section.start;
         const piece = path.join(tempDir, `teil-${index + 1}${ext}`);
         const label = sections.length > 1 ? t('Abschnitt {number} von {total}', { number: index + 1, total: sections.length }) : t('Schneidet');
         job.update({ detail: label });
 
-        await runFfmpeg(tools.path('ffmpeg'), sectionArgs(section, options, media, piece), {
+        await runFfmpeg(tools.path('ffmpeg'), sectionArgs(section, options, media, piece, encoder), {
           duration: length,
           signal: job.signal,
           onProgress: (part) => job.update({ progress: ((finished + part * length) / total) * 100, detail: label }),

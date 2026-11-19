@@ -26,6 +26,8 @@
       "package.json",
       "LICENSE",
       "LICENSE-NOTICE.md",
+      "!node_modules/hls.js/src/**",
+      "!node_modules/hls.js/dist/!(hls.light.min.js)",
       "!**/__pycache__/**"
     ],
     "asarUnpack": [

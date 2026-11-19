@@ -3,7 +3,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
-const { runFfmpeg, probeMedia } = require('../core/ffmpeg');
+const { runFfmpeg, probeMedia, audioKbpsFor } = require('../core/ffmpeg');
 const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 
@@ -144,9 +144,9 @@ function videoCodecArgs(plan) {
   return ['-c:v', 'libx264', '-preset', 'medium', ...rate, '-pix_fmt', 'yuv420p'];
 }
 
-function audioCodecArgs(plan) {
+function audioCodecArgs(plan, media) {
   if (plan.copyAudio) return ['-c:a', 'copy'];
-  const kbps = plan.audioKbps ?? 192;
+  const kbps = plan.audioKbps ?? audioKbpsFor(media);
   return plan.format === 'webm' ? ['-c:a', 'libopus', '-b:a', `${kbps}k`] : ['-c:a', 'aac', '-b:a', `${kbps}k`];
 }
 
@@ -159,7 +159,9 @@ function register({ ipcMain, queue, tools }) {
 
   function runAudio(media, plan, output, job) {
     const format = AUDIO_FORMATS[plan.format];
-    const quality = plan.audioKbps ? ['-b:a', `${plan.audioKbps}k`] : format.quality;
+    // M4A hat eine feste Rate, die nicht über der Quelle liegen soll. MP3 (VBR), WAV und FLAC bleiben, wie sie sind.
+    const matched = format.codec === 'aac' ? ['-b:a', `${audioKbpsFor(media)}k`] : format.quality;
+    const quality = plan.audioKbps ? ['-b:a', `${plan.audioKbps}k`] : matched;
     return runFfmpeg(ffmpeg(), ['-i', media.path, '-vn', '-map', '0:a:0', '-c:a', format.codec, ...quality, output], {
       duration: media.duration,
       signal: job.signal,
@@ -171,7 +173,7 @@ function register({ ipcMain, queue, tools }) {
     const video = plan.encodeVideo ? [...videoFilters(plan), ...videoCodecArgs(plan)] : ['-c:v', 'copy'];
     const audioMap = plan.copyAudio ? ['-map', '0:a?'] : ['-map', '0:a:0?'];
     return runFfmpeg(ffmpeg(), [
-      '-i', media.path, '-map', '0:v:0', ...audioMap, ...video, ...audioCodecArgs(plan), ...containerArgs(plan), output,
+      '-i', media.path, '-map', '0:v:0', ...audioMap, ...video, ...audioCodecArgs(plan, media), ...containerArgs(plan), output,
     ], {
       duration: media.duration,
       signal: job.signal,
@@ -195,7 +197,7 @@ function register({ ipcMain, queue, tools }) {
 
     await runFfmpeg(ffmpeg(), [
       ...common, '-map', '0:a:0?', '-pass', '2', '-passlogfile', logFile,
-      ...audioCodecArgs(plan), ...containerArgs(plan), output,
+      ...audioCodecArgs(plan, media), ...containerArgs(plan), output,
     ], options(50, t('Komprimiert (Durchgang 2 von 2{note})', { note })));
   }
 

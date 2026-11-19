@@ -4,7 +4,7 @@ const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { UserError, toGermanMessage } = require('../core/error-messages');
-const { runFfmpeg, probeMedia, videoEncoderArgs } = require('../core/ffmpeg');
+const { runFfmpeg, probeMedia, videoEncoderArgs, audioKbpsFor } = require('../core/ffmpeg');
 const { saveResult } = require('../core/drafts');
 const { t } = require('../core/i18n');
 
@@ -16,6 +16,7 @@ const TRANSPARENT_FORMATS = {
     pixel: 'yuva420p',
     video: ['-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-crf', '30', '-b:v', '0', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '4'],
     audio: ['-c:a', 'libopus', '-b:a', '160k'],
+    opusCeiling: 160,
   },
   mov: {
     ext: '.mov',
@@ -49,6 +50,12 @@ function checkOptions(options) {
   if (options.background === 'color' && !hex(options.backgroundColor)) throw new UserError(t('Bitte wähle eine Hintergrundfarbe.'));
   if (['image', 'video'].includes(options.background) && !options.backgroundPath) throw new UserError(t('Bitte wähle ein Hintergrundbild oder -video.'));
   if (options.background === 'transparent' && !TRANSPARENT_FORMATS[options.transparentFormat]) throw new UserError(t('Dieses Format wird nicht unterstützt.'));
+}
+
+// WebM bekommt Opus, höchstens 160 kbit/s und nicht mehr als die Quelle. MOV bleibt verlustfrei (PCM).
+function transparentAudio(format, media) {
+  if (!format.opusCeiling) return format.audio;
+  return ['-c:a', 'libopus', '-b:a', `${audioKbpsFor(media, format.opusCeiling)}k`];
 }
 
 function buildGraph(options, size, fps, backgroundIsImage) {
@@ -96,9 +103,9 @@ function register({ ipcMain, queue, tools }) {
 
       const transparent = options.background === 'transparent' ? TRANSPARENT_FORMATS[options.transparentFormat] : null;
       const audio = !media.hasAudio ? []
-        : ['-map', '0:a:0', ...(transparent ? transparent.audio
-          : ['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k'])];
-      const video = transparent ? transparent.video : [...await videoEncoderArgs(ffmpeg), '-movflags', '+faststart'];
+        : ['-map', '0:a:0', ...(transparent ? transparentAudio(transparent, media)
+          : ['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', `${audioKbpsFor(media)}k`])];
+      const video = transparent ? transparent.video : [...await videoEncoderArgs(ffmpeg, { sourceKbps: media.videoKbps }), '-movflags', '+faststart'];
       const ext = transparent ? transparent.ext : '.mp4';
       const output = path.join(tempDir, `ergebnis${ext}`);
       const label = t('Ersetzt den Hintergrund');

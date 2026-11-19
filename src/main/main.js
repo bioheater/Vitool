@@ -46,6 +46,7 @@ const features = [
   require('./features/chroma'),
   require('./features/ai'),
   require('./features/transcribe'),
+  require('./features/summary'),
 ];
 
 let win = null;
@@ -287,6 +288,17 @@ app.whenReady().then(() => {
       properties: ['openFile'],
       filters: [
         { name: t('Bilder und Videos'), extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v'] },
+        { name: t('Alle Dateien'), extensions: ['*'] },
+      ],
+    });
+    return result.canceled ? null : result.filePaths[0];
+  });
+  ipcMain.handle('dialog:pickSummarySource', async () => {
+    const result = await dialog.showOpenDialog(win, {
+      title: t('Video oder Text auswählen'),
+      properties: ['openFile'],
+      filters: [
+        { name: t('Videos, Untertitel und Texte'), extensions: [...VIDEO_FILTERS[0].extensions, 'srt', 'vtt', 'txt', 'json'] },
         { name: t('Alle Dateien'), extensions: ['*'] },
       ],
     });
