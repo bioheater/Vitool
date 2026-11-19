@@ -3,7 +3,7 @@ import { el, icon, pageHeader } from '../utils/dom.js';
 import { ICONS } from '../utils/icons.js';
 import { formatTime } from '../utils/time.js';
 import { SectionEditor } from '../components/section-editor.js';
-import { t, formatDate } from '../utils/i18n.js';
+import { t, formatDate, LANGUAGE } from '../utils/i18n.js';
 import { fixButton } from '../components/error-fix.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
@@ -402,6 +402,8 @@ function showInfo(info) {
     ...info.heights.map((height) => el('option', { value: String(height) }, `${height}p`)),
   );
 
+  renderLanguages(info.audioLanguages ?? []);
+
   parts.sectionToggle.checked = false;
   parts.sectionRow.hidden = !info.duration;
   parts.sections.hidden = true;
@@ -410,6 +412,44 @@ function showInfo(info) {
 
   parts.result.hidden = false;
   renderOptions();
+}
+
+// Sprachnamen in der Sprache der Oberfläche, etwa "Deutsch" statt "German".
+const LANGUAGE_NAMES = (() => {
+  try {
+    return new Intl.DisplayNames([LANGUAGE], { type: 'language' });
+  } catch {
+    return null;
+  }
+})();
+
+function languageName({ code, name }) {
+  try {
+    const shown = LANGUAGE_NAMES?.of(code);
+    if (shown && shown !== code) return shown[0].toUpperCase() + shown.slice(1);
+  } catch {
+    // Unbekanntes Kürzel: dann der Name, den yt-dlp mitliefert.
+  }
+  return name ?? code;
+}
+
+function languageLabel(language) {
+  const parts = [languageName(language)];
+  if (language.original) parts.push(t('Original'));
+  else if (language.auto) parts.push(t('automatisch übersetzt'));
+  return parts.length > 1 ? `${parts[0]} (${parts.slice(1).join(', ')})` : parts[0];
+}
+
+// Das Original steht oben und ist vorgewählt, die übrigen Sprachen folgen alphabetisch.
+function renderLanguages(languages) {
+  const original = languages.filter((language) => language.original);
+  const others = languages.filter((language) => !language.original)
+    .sort((a, b) => languageName(a).localeCompare(languageName(b), LANGUAGE));
+  parts.audioLanguage.replaceChildren(...[...original, ...others].map((language) =>
+    el('option', { value: language.original ? '' : language.code }, languageLabel(language))));
+  if (!original.length) parts.audioLanguage.prepend(el('option', { value: '', selected: true }, t('Standard')));
+  parts.audioLanguage.value = '';
+  parts.languageField.hidden = languages.length < 2;
 }
 
 function renderOptions() {
@@ -485,6 +525,7 @@ async function startDownload() {
     duration: info.duration,
     mode: state.mode,
     height: Number(parts.quality.value) || null,
+    audioLanguage: parts.languageField.hidden ? null : parts.audioLanguage.value || null,
     sections,
     exact: parts.exact.checked,
     merge: editor.merge && sections.length > 1,
@@ -560,6 +601,8 @@ function buildPage(root) {
     modeAudio: el('button', { class: 'segment', onclick: () => { state.mode = 'audio'; renderOptions(); } }, t('Nur Audio (MP3)')),
     quality: el('select', { class: 'input', 'aria-label': t('Qualität') }),
     qualityField: el('div', {}),
+    audioLanguage: el('select', { class: 'input', 'aria-label': t('Tonspur') }),
+    languageField: el('label', { class: 'field', hidden: true }),
     sectionToggle: el('input', {
       type: 'checkbox',
       onchange: (event) => enableSections(event.target.checked),
@@ -645,6 +688,7 @@ function buildPage(root) {
   parts.previewHint.textContent = t('Für dieses Video ist keine Vorschau möglich. Lege die Zeiten über Griffe oder Eingabefelder fest.');
   parts.preview.append(parts.video);
   parts.qualityField.append(parts.quality);
+  parts.languageField.append(el('span', { class: 'muted' }, t('Tonspur')), parts.audioLanguage);
   parts.sectionRow.append(parts.sectionToggle, el('span', { class: 'switch-track' }), t('Nur einen Abschnitt herunterladen'));
 
   editor = new SectionEditor({ video: parts.video, onMessage: setMessage, createRange: nextRange });
@@ -670,6 +714,7 @@ function buildPage(root) {
       el('div', { class: 'option-row' },
         el('div', { class: 'segments', role: 'group', 'aria-label': t('Art des Downloads') }, parts.modeVideo, parts.modeAudio),
         parts.qualityField,
+        parts.languageField,
       ),
       parts.sectionRow,
       parts.sections,

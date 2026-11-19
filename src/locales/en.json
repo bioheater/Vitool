@@ -952,5 +952,7 @@
   "Fehlende Spuren: {count}": "Missing tracks: {count}",
   "Hinzugefügte Spuren, Versatz, Tempo und Lautstärke gelten nur für die geöffnete Datei.": "Added tracks, offset, tempo and volume only apply to the open file.",
   "{count} Dateien als MKV speichern": "Save {count} files as MKV",
-  "Andere Reihenfolge, Spuren zugeordnet": "Different order, tracks matched"
+  "Andere Reihenfolge, Spuren zugeordnet": "Different order, tracks matched",
+  "automatisch übersetzt": "auto-translated",
+  "Tonspur": "Audio track"
 }

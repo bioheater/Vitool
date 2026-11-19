@@ -64,6 +64,26 @@ function pickPreview(formats) {
   return stream ? { url: stream.url, kind: 'hls', headers: stream.http_headers } : null;
 }
 
+// Tonsprachen, wenn ein Video mehrere hat, bei YouTube etwa Synchronfassungen. Das Original steht vorn.
+// yt-dlp nennt es in der Formatbeschreibung, etwa "English original (default), medium".
+function audioLanguages(formats) {
+  const found = new Map();
+  for (const format of formats) {
+    if (!format.language || !format.acodec || format.acodec === 'none') continue;
+    const note = format.format_note ?? '';
+    const entry = found.get(format.language) ?? { code: format.language, name: null, original: false, auto: false };
+    if (/\boriginal\b/i.test(note)) entry.original = true;
+    if (/dubbed-auto|auto-dubbed/i.test(note)) entry.auto = true;
+    entry.name ??= note.split(',')[0].replace(/\boriginal\b|\(default\)|- dubbed(-auto)?/gi, '').trim() || null;
+    found.set(format.language, entry);
+  }
+  if (found.size < 2) return [];
+  return [...found.values()].sort((a, b) => Number(b.original) - Number(a.original));
+}
+
+// Sprachkürzel wie "de", "pt-BR" oder "zh-Hans". Alles andere wird ignoriert.
+const LANGUAGE_CODE = /^[a-z]{2,3}(-[a-z0-9]{2,8})*$/i;
+
 function normalizeInfo(raw, url) {
   const info = raw.entries ? raw.entries.find(Boolean) : raw;
   // Reiner Playlist-Link oder ein Video, das zu einer Playlist gehört (YouTube: "list=" im Link).
@@ -90,6 +110,7 @@ function normalizeInfo(raw, url) {
     thumbnail: info.thumbnail ?? null,
     isLive: Boolean(info.is_live),
     heights,
+    audioLanguages: audioLanguages(formats),
     previewUrl: preview?.url ?? null,
     previewKind: preview?.kind ?? null,
     previewHeaders: preview?.headers ?? null,
@@ -171,10 +192,17 @@ function buildArgs(options, tools, tempDir) {
   const { url, mode, height, sections, exact, headers } = options;
   const hasSections = sections.length > 0;
   // Ein auf der Seite gefundener Stream heißt meist nur "master", der Titel kommt dann von der Seite.
-  const title = options.pageUrl && options.title ? safeFolderName(options.title).replace(/%/g, '%%') : '%(title).120B';
+  const baseTitle = options.pageUrl && options.title ? safeFolderName(options.title).replace(/%/g, '%%') : '%(title).120B';
+  // Eine andere Tonsprache steht im Dateinamen. So überschreiben sich zwei Fassungen nicht gegenseitig.
+  const language = LANGUAGE_CODE.test(options.audioLanguage ?? '') ? options.audioLanguage : null;
+  const title = language ? `${baseTitle} [${language}]` : baseTitle;
   const name = hasSections
     ? `${title} [%(section_start).1f-%(section_end).1f].%(ext)s`
     : `${title}.%(ext)s`;
+  // Fehlt die Sprache doch einmal, lädt yt-dlp die übliche Tonspur statt abzubrechen.
+  // Beim Bild steht dann "bv" statt "bv*": Sonst nimmt yt-dlp bei kleiner Auflösung eine
+  // fertige Datei mit Bild und Originalton und lässt die gewählte Tonspur weg.
+  const pick = language ? `[language=${language}]` : null;
 
   const args = [
     ...commonArgs(tools),
@@ -191,10 +219,10 @@ function buildArgs(options, tools, tempDir) {
   ];
 
   if (mode === 'audio') {
-    args.push('-f', 'ba/b', '-x', '--audio-format', 'mp3', '--audio-quality', '0');
+    args.push('-f', pick ? `ba${pick}/b${pick}/ba/b` : 'ba/b', '-x', '--audio-format', 'mp3', '--audio-quality', '0');
   } else {
     // Die Auflösung muss zuerst stehen, sonst gewinnt H.264 auch bei niedriger Qualität.
-    args.push('-f', 'bv*+ba/b', '-S', `${height ? `res:${height}` : 'res'},vcodec:h264,acodec:aac`);
+    args.push('-f', pick ? `bv+ba${pick}/b${pick}/bv*+ba/b` : 'bv*+ba/b', '-S', `${height ? `res:${height}` : 'res'},vcodec:h264,acodec:aac`);
     args.push('--merge-output-format', 'mp4');
   }
 
