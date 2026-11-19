@@ -1,5 +1,22 @@
 [
   {
+    "version": "0.6.0",
+    "de": [
+      "Neuer Bereich Zusammenfassen: Worum es in einem Video geht, als Kurzfassung, wichtigste Punkte und Kapitel mit Zeitmarken. Das läuft auf deinem PC über Ollama, auf Wunsch auch über einen Online-Dienst mit eigenem API-Schlüssel.",
+      "Als Text dienen die Untertitel eines Links, Untertitel- und Transkriptdateien oder Untertitel im Video. Hat ein Video keine, erkennt Whisper die Sprache. Aus Transkribieren geht es mit einem Klick weiter.",
+      "Beim Download lässt sich die Tonsprache wählen, etwa die deutsche Synchronfassung eines YouTube-Videos. Mehrere Sprachen landen auf Wunsch zusammen in einer MKV, jede Spur mit Sprache und Namen.",
+      "Die Vorschau beim Abschnitt-Download klappt jetzt auch bei YouTube.",
+      "Neu kodierte Videos werden nicht mehr größer als nötig. Nach dem Entfernen von Pausen war ein YouTube-Video vorher fast viermal so groß."
+    ],
+    "en": [
+      "New Summarize area: what a video is about, as a short summary, key points and chapters with time stamps. It runs on your PC with Ollama, or with an online service and your own API key if you like.",
+      "The text comes from the subtitles of a link, subtitle and transcript files, or subtitles inside the video. If a video has none, Whisper recognizes the speech. From Transcribe it takes one click.",
+      "Downloads let you pick the audio language, for example the German dub of a YouTube video. Several languages can go into one MKV, each track labeled with its language and name.",
+      "The preview when downloading a section now also works for YouTube.",
+      "Re-encoded videos no longer get bigger than needed. After removing pauses, a YouTube video used to be almost four times as large."
+    ]
+  },
+  {
     "version": "0.5.0",
     "de": [
       "Neuer Bereich Ton: Pausen entfernen, Rauschen mindern und die Lautstärke angleichen. Pausen überspringt Vitool schon beim Abspielen, für Rauschen und Lautstärke gibt es eine kurze Hörprobe mit Vorher und Nachher.",

@@ -5,7 +5,7 @@
 <h1 align="center">Vitool</h1>
 
 <p align="center">
-  An all-in-one video toolbox for Windows: download, cut, convert, clean up audio, censor, mask and transcribe.<br>
+  An all-in-one video toolbox for Windows: download, cut, convert, clean up audio, censor, mask, transcribe and summarize.<br>
   Everything runs on your own computer. Nothing is uploaded.
 </p>
 
@@ -24,6 +24,8 @@
 ### Download
 - Paste a link from YouTube, Instagram, TikTok and many other sites, pick the quality, done
 - Audio only, single sections of a video, or whole playlists
+- Pick the audio language of videos with several, such as YouTube dubs, or download several languages
+  at once into one MKV with every track labeled
 - Paste many links at once or drop a text file with links to get a list to choose from
 - If yt-dlp doesn't know a site, Vitool finds the video on the page by itself, also on overview pages with many episodes,
   and saves the player's subtitles as SRT
@@ -91,6 +93,17 @@
 
 ![Transcription with two speakers](docs/screenshots/transcribe.png)
 
+### Summarize
+- What a video is about: a short summary, the key points and chapters with time stamps
+- Works with a link (Vitool uses the video's subtitles), subtitle files, transcripts from Transcribe,
+  or videos with embedded subtitles. Without any text, Whisper recognizes the speech first
+- Runs locally with [Ollama](https://ollama.com) and the model of your choice. Long videos are read in parts
+- Or use an online service with your own API key: OpenAI, Anthropic, Google Gemini, OpenRouter or any
+  OpenAI-compatible service. Only the text is sent, never the video or sound, and the key is stored encrypted
+- Copy the result or save it as Markdown
+
+![Summary of Tears of Steel with key points and chapters](docs/screenshots/summary.png)
+
 ### And also
 - Seven color themes with a subtle glass effect on Windows 11, English and German interface
 - Send a file from one area to the next, for example from Download to Cut
@@ -117,7 +130,8 @@ They bring their own Python, so you do not need to install anything else.
 ## Privacy
 
 Vitool processes all videos, audio and transcripts locally. It only goes online to download what you ask for,
-to set up its programs and add-ons, and to check for updates on GitHub.
+to set up its programs and add-ons, and to check for updates on GitHub. If you choose an online service for
+summaries, the text of the video (subtitles or transcript, title and description) is sent to that service.
 
 ## Building from source
 
