@@ -17,7 +17,7 @@
   <a href="#license">License</a>
 </p>
 
-![Vitool in one minute: download, AI mask, green screen, removing pauses, censoring, transcribing, summarizing and color themes](docs/screenshots/demo.webp)
+![Vitool in one minute: download, AI mask, green screen, removing pauses, censoring, transcribing, summarizing and color themes](docs/screenshots/demo.avif)
 
 ## Features
 
