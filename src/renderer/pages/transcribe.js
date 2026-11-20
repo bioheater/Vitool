@@ -28,6 +28,8 @@ const LANGUAGES = [
   ['ar', t('Arabisch')],
   ['ja', t('Japanisch')],
   ['zh', t('Chinesisch')],
+  ['ko', t('Koreanisch')],
+  ['hi', t('Hindi')],
 ];
 const LANGUAGE_NAMES = Object.fromEntries(LANGUAGES.filter(([code]) => code));
 
@@ -863,6 +865,8 @@ function summarizeTranscript() {
   sendTo('summary', null, {
     transcript: {
       title,
+      // Damit Zeitmarken im Chat an die Stelle im Video springen können.
+      source: state.media?.path ?? state.link?.url ?? null,
       language: state.transcript.language ?? null,
       speakerNames: state.transcript.speakerNames ?? null,
       segments: state.transcript.segments.map(({ start, text, speaker }) => ({ start, text, speaker })),
@@ -1173,7 +1177,7 @@ function buildPage(root) {
     parts.saved,
     // Der erkannte Text geht direkt in den Bereich Zusammenfassen, ohne ihn erst zu speichern.
     el('div', { class: 'action-row' },
-      el('button', { class: 'button continue-button', onclick: summarizeTranscript }, icon(ICONS.summary), t('Zusammenfassen'))),
+      el('button', { class: 'button send-button continue-button', onclick: summarizeTranscript }, icon(ICONS.summary), t('Zusammenfassen'))),
   );
   // Ohne Text steht hier, was passiert. So bleibt die rechte Spalte nie leer.
   parts.waitTitle = el('strong', {});

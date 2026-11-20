@@ -14,8 +14,9 @@ const invoke = (...args) => window.vitool.invoke(...args);
 const LANGUAGES = {
   und: t('Unbestimmt'), deu: t('Deutsch'), ger: t('Deutsch'), eng: t('Englisch'), fra: t('Französisch'), fre: t('Französisch'),
   spa: t('Spanisch'), ita: t('Italienisch'), jpn: t('Japanisch'), kor: t('Koreanisch'), rus: t('Russisch'), tur: t('Türkisch'),
+  por: t('Portugiesisch'), chi: t('Chinesisch'), zho: t('Chinesisch'), hin: t('Hindi'),
 };
-const LANGUAGE_CHOICES = ['und', 'deu', 'eng', 'fra', 'spa', 'ita', 'jpn', 'kor', 'rus', 'tur'];
+const LANGUAGE_CHOICES = ['und', 'deu', 'eng', 'fra', 'spa', 'por', 'ita', 'jpn', 'zho', 'kor', 'hin', 'rus', 'tur'];
 const TYPE_LABELS = { video: t('Video'), audio: 'Audio', subtitle: t('Untertitel') };
 
 const FEATURES = [

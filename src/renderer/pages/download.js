@@ -413,6 +413,7 @@ function showInfo(info) {
   );
 
   renderLanguages(info.audioLanguages ?? []);
+  renderExtras(info);
 
   parts.sectionToggle.checked = false;
   parts.sectionRow.hidden = !info.duration;
@@ -448,6 +449,48 @@ function languageLabel(language) {
   if (language.original) parts.push(t('Original'));
   else if (language.auto) parts.push(t('automatisch übersetzt'));
   return parts.length > 1 ? `${parts[0]} (${parts.slice(1).join(', ')})` : parts[0];
+}
+
+// Zusätze: Untertitel und Kapitel in die Datei, Werbung über SponsorBlock überspringen.
+// Jede Zeile erscheint nur, wenn das Video sie hergibt. Die Häkchen merkt sich Vitool.
+function renderExtras(info) {
+  const tracks = info.subtitleTracks ?? [];
+  // Alphabetisch nach dem angezeigten Namen, der Wert bleibt die Stelle in der Liste von yt-dlp.
+  const labeled = tracks.map((track, index) => ({
+    index,
+    label: track.auto ? `${languageName(track)} (${t('automatisch erkannt')})` : languageName(track),
+  })).sort((a, b) => a.label.localeCompare(b.label, LANGUAGE));
+  parts.subtitleSelect.replaceChildren(...labeled.map(({ index, label }) => el('option', { value: String(index) }, label)));
+  // Vorgewählt: Untertitel in der Sprache der Oberfläche, sonst die ersten von Hand erstellten.
+  const own = tracks.findIndex((track) => track.code.split('-')[0] === LANGUAGE);
+  const manual = tracks.findIndex((track) => !track.auto);
+  parts.subtitleSelect.value = String(own >= 0 ? own : Math.max(0, manual));
+  parts.chapterCount.textContent = info.chapterCount ? t('{count} Kapitel', { count: info.chapterCount }) : '';
+  renderExtraState();
+}
+
+function renderExtraState() {
+  const { info } = state;
+  if (!info) return;
+  const audio = state.mode === 'audio';
+  // Bei Abschnitten passen die Zeiten nicht, dort gelten die Zusätze nicht.
+  const sections = state.useSections;
+  parts.subtitleRow.hidden = audio || sections || !(info.subtitleTracks ?? []).length;
+  parts.chapterRow.hidden = sections || !info.chapterCount;
+  parts.sponsorRow.hidden = sections || !info.sponsorBlock;
+  parts.subtitleSelect.disabled = !parts.subtitleToggle.checked;
+  parts.extras.hidden = parts.subtitleRow.hidden && parts.chapterRow.hidden && parts.sponsorRow.hidden;
+}
+
+function chosenExtras() {
+  const { info } = state;
+  const audio = state.mode === 'audio';
+  const track = (info.subtitleTracks ?? [])[Number(parts.subtitleSelect.value)];
+  return {
+    subtitle: !audio && !parts.subtitleRow.hidden && parts.subtitleToggle.checked && track ? { code: track.code, auto: track.auto } : null,
+    chapters: !parts.chapterRow.hidden && parts.chapterToggle.checked,
+    sponsorBlock: !parts.sponsorRow.hidden && parts.sponsorToggle.checked,
+  };
 }
 
 // Das Original steht oben und ist vorgewählt, die übrigen Sprachen folgen alphabetisch.
@@ -514,6 +557,7 @@ function renderOptions() {
   parts.modeAudio.setAttribute('aria-pressed', String(audio));
   parts.qualityField.hidden = audio;
   if (state.languages) renderExtraSummary();
+  renderExtraState();
 }
 
 function nextRange(duration, last) {
@@ -581,6 +625,7 @@ function loadPreview() {
 function enableSections(enabled) {
   state.useSections = enabled;
   parts.sections.hidden = !enabled;
+  renderExtraState();
   if (!enabled) {
     parts.video.pause();
     return;
@@ -601,6 +646,7 @@ async function startDownload() {
     mode: state.mode,
     height: Number(parts.quality.value) || null,
     audioTracks: chosenAudioTracks(),
+    ...chosenExtras(),
     sections,
     exact: parts.exact.checked,
     merge: editor.merge && sections.length > 1,
@@ -612,6 +658,10 @@ async function startDownload() {
   });
   if (!response.ok) setMessage(response.error);
   else setMessage('');
+}
+
+async function saveExtra(key, value) {
+  state.settings = await invoke('settings:set', { [key]: value });
 }
 
 async function chooseFolder() {
@@ -692,6 +742,15 @@ function buildPage(root) {
     previewHint: el('p', { class: 'muted', hidden: true }),
     video: el('video', { controls: true, preload: 'metadata' }),
     exact: el('input', { type: 'checkbox' }),
+    extras: el('div', { class: 'download-extras', hidden: true }),
+    subtitleToggle: el('input', { type: 'checkbox', onchange: (event) => saveExtra('downloadSubtitles', event.target.checked) }),
+    subtitleSelect: el('select', { class: 'input small-select', 'aria-label': t('Sprache der Untertitel') }),
+    subtitleRow: el('div', { class: 'extra-row', hidden: true }),
+    chapterToggle: el('input', { type: 'checkbox', onchange: (event) => saveExtra('downloadChapters', event.target.checked) }),
+    chapterCount: el('span', { class: 'muted' }),
+    chapterRow: el('label', { class: 'check', hidden: true }),
+    sponsorToggle: el('input', { type: 'checkbox', onchange: (event) => saveExtra('sponsorBlock', event.target.checked) }),
+    sponsorRow: el('label', { class: 'check', hidden: true }),
     folder: el('span', { class: 'folder-path' }),
     openInCut: el('input', { type: 'checkbox' }),
     history: el('ul', { class: 'history-list' }),
@@ -770,6 +829,16 @@ function buildPage(root) {
   parts.languageField.append(el('span', { class: 'muted' }, t('Tonspur')), parts.audioLanguage);
   parts.extraLanguages.append(parts.extraSummary, parts.extraList, parts.extraHint);
   parts.sectionRow.append(parts.sectionToggle, el('span', { class: 'switch-track' }), t('Nur einen Abschnitt herunterladen'));
+  parts.subtitleRow.append(
+    el('label', { class: 'check' }, parts.subtitleToggle, el('span', {}, t('Untertitel in die Datei einbetten'))),
+    parts.subtitleSelect);
+  parts.subtitleSelect.addEventListener('change', renderExtraState);
+  parts.subtitleToggle.addEventListener('change', renderExtraState);
+  parts.chapterRow.append(parts.chapterToggle, el('span', {}, t('Kapitel einbetten'), ' ', parts.chapterCount,
+    el('small', { class: 'muted' }, t('Videoplayer zeigen sie als Sprungmarken an.'))));
+  parts.sponsorRow.append(parts.sponsorToggle, el('span', {}, t('Werbung und Eigenwerbung überspringen (SponsorBlock)'),
+    el('small', { class: 'muted' }, t('Schneidet Sponsoren-Abschnitte, Eigenwerbung und Aufrufe zum Abonnieren heraus, soweit die SponsorBlock-Gemeinschaft sie markiert hat. Dafür geht die Video-ID an sponsor.ajay.app.'))));
+  parts.extras.append(parts.subtitleRow, parts.chapterRow, parts.sponsorRow);
 
   editor = new SectionEditor({ video: parts.video, onMessage: setMessage, createRange: nextRange });
 
@@ -807,6 +876,7 @@ function buildPage(root) {
         parts.languageField,
       ),
       parts.extraLanguages,
+      parts.extras,
       parts.sectionRow,
       parts.sections,
     ),
@@ -830,7 +900,7 @@ function buildPage(root) {
   setupDrop(root);
 
   root.append(
-    pageHeader('Download', t('Link einfügen, Qualität wählen, fertig.')),
+    pageHeader(t('Download'), t('Link einfügen, Qualität wählen, fertig.')),
     parts.urlCard,
     parts.message,
     parts.finder,
@@ -847,7 +917,7 @@ function buildPage(root) {
 
 export default {
   id: 'download',
-  label: 'Download',
+  label: t('Download'),
   hint: t('Videos und Ton aus Links laden, auch ganze Playlists.'),
   async mount(root) {
     buildPage(root);
@@ -855,6 +925,9 @@ export default {
     parts.folder.textContent = state.settings.downloadDir;
     parts.folder.title = state.settings.downloadDir;
     parts.openInCut.checked = state.settings.openInCut;
+    parts.subtitleToggle.checked = Boolean(state.settings.downloadSubtitles);
+    parts.chapterToggle.checked = state.settings.downloadChapters !== false;
+    parts.sponsorToggle.checked = Boolean(state.settings.sponsorBlock);
     parts.openInCut.addEventListener('change', async (event) => {
       state.settings = await invoke('settings:set', { openInCut: event.target.checked });
     });

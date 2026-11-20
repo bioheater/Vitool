@@ -140,6 +140,10 @@ function normalizeInfo(raw, url) {
     isLive: Boolean(info.is_live),
     heights,
     audioLanguages: audioLanguages(formats),
+    subtitleTracks: subtitleTracks(info),
+    chapterCount: Array.isArray(info.chapters) ? info.chapters.length : 0,
+    // SponsorBlock kennt nur YouTube-Videos.
+    sponsorBlock: info.extractor_key === 'Youtube' && !info.is_live,
     previewUrl: preview?.url ?? null,
     previewKind: preview?.kind ?? null,
     previewHeaders: preview?.headers ?? null,
@@ -147,6 +151,19 @@ function normalizeInfo(raw, url) {
     previewAvailableAt: preview?.availableAt ?? null,
     playlist,
   };
+}
+
+// Untertitel zum Mitladen: alle von Hand erstellten, dazu die automatisch erkannten in der Originalsprache.
+// Automatische Übersetzungen von YouTube bleiben draußen, davon gibt es über hundert.
+function subtitleTracks(info) {
+  const manual = Object.keys(info.subtitles ?? {}).filter((code) => code !== 'live_chat');
+  const tracks = manual.map((code) => ({ code, auto: false }));
+  const auto = Object.keys(info.automatic_captions ?? {});
+  const original = auto.find((code) => code.endsWith('-orig'));
+  const language = (info.language ?? '').split('-')[0];
+  const autoCode = original ?? (language && auto.includes(language) ? language : null);
+  if (autoCode && !manual.some((code) => code.split('-')[0] === autoCode.split('-')[0])) tracks.push({ code: autoCode, auto: true });
+  return tracks;
 }
 
 const UNAVAILABLE_TITLES = ['[Private video]', '[Deleted video]', '[Unavailable video]'];
@@ -247,6 +264,24 @@ async function labelAudioTracks(tools, file, tracks, signal) {
   await fs.rename(temp, file);
 }
 
+// Was SponsorBlock überspringt: bezahlte Werbung, Eigenwerbung und Aufrufe zum Abonnieren.
+const SPONSOR_CATEGORIES = 'sponsor,selfpromo,interaction';
+const SUBTITLE_CODE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]+)*$/;
+
+// Zusätze beim Download. Bei Abschnitten passen Untertitel, Kapitel und SponsorBlock nicht zur Zeit,
+// dort bleiben sie weg.
+function extraArgs(options, hasSections) {
+  if (hasSections || options.pageUrl) return [];
+  const args = [];
+  if (options.sponsorBlock) args.push('--sponsorblock-remove', SPONSOR_CATEGORIES);
+  if (options.chapters) args.push('--embed-chapters');
+  const subtitle = options.subtitle;
+  if (options.mode !== 'audio' && subtitle && SUBTITLE_CODE.test(subtitle.code ?? '')) {
+    args.push(subtitle.auto ? '--write-auto-subs' : '--write-subs', '--sub-langs', subtitle.code, '--embed-subs');
+  }
+  return args;
+}
+
 function buildArgs(options, tools, tempDir) {
   const { url, mode, height, sections, exact, headers } = options;
   const hasSections = sections.length > 0;
@@ -301,6 +336,7 @@ function buildArgs(options, tools, tempDir) {
   // YouTube drosselt lange Anfragen stark, in kleinen Stücken lädt FFmpeg mit voller Geschwindigkeit.
   if (hasSections) args.push('--downloader-args', `ffmpeg_i:-request_size ${SECTION_REQUEST_BYTES}`);
   if (hasSections && exact) args.push('--force-keyframes-at-cuts');
+  args.push(...extraArgs(options, hasSections));
 
   args.push('--', url);
   return args;
@@ -660,6 +696,7 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
       if (!options.entries?.length) throw new UserError(t('Bitte wähle mindestens ein Video aus.'));
       const folder = options.subfolder ? path.join(options.folder, safeFolderName(options.playlistTitle)) : options.folder;
       await fs.mkdir(folder, { recursive: true });
+      const settings = store.get('settings') ?? {};
       options.entries.forEach((entry) => {
         const single = {
           url: entry.url,
@@ -674,6 +711,9 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
           merge: false,
           folder,
           openInCut: false,
+          // Kapitel und SponsorBlock wie beim einzelnen Video, nach den gemerkten Häkchen.
+          chapters: settings.downloadChapters !== false,
+          sponsorBlock: Boolean(settings.sponsorBlock) && /^https?:\/\/([^/]+\.)?(youtube\.com|youtu\.be)\//i.test(entry.url ?? ''),
         };
         validate(single);
         queue.add({ title: entry.title, kind: 'download', run: (job) => runDownload(single, job) });

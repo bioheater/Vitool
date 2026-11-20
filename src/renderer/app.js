@@ -12,6 +12,7 @@ import settingsPage from './pages/settings.js';
 import { mountQueuePanel } from './components/queue-panel.js';
 import { checkTools } from './components/tools-dialog.js';
 import { installVideoKeys } from './components/video-controls.js';
+import { setupVolume } from './utils/volume.js';
 import { el, icon } from './utils/dom.js';
 import { setupSidebar } from './components/sidebar.js';
 import { attachNavTip } from './components/nav-tip.js';
@@ -22,6 +23,8 @@ import { setupUpdateNotice } from './components/update-notice.js';
 import { showWhatsNew } from './components/whats-new-dialog.js';
 
 applyTheme(window.vitool.i18n.theme);
+// Die Sprache der Seite bestimmt auch die Schriftform, etwa bei Zeichen, die Chinesisch und Japanisch teilen.
+document.documentElement.lang = window.vitool.i18n.language;
 // Die Entwicklerversion zeigt wie in der Taskleiste ein oranges DEV-Schild am Logo.
 if (window.vitool.i18n.dev) document.documentElement.dataset.dev = '';
 if (window.vitool.i18n.glass) applyGlass(true);
@@ -83,6 +86,7 @@ setupSidebar({
   resizer: document.getElementById('sidebar-resizer'),
 });
 installVideoKeys();
+setupVolume();
 mountQueuePanel(document.getElementById('queue'));
 showPage('download');
 checkTools(document.getElementById('tools-dialog'));

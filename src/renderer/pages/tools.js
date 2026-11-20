@@ -1,9 +1,10 @@
-// Bereich Werkzeuge: GIF, Standbild, Untertitel einbrennen, Zensieren und Greenscreen.
+// Bereich Werkzeuge: GIF, Standbild, Untertitel einbrennen, Zensieren, Greenscreen und Anpassen.
 import { el, pageHeader } from '../utils/dom.js';
 import { folderOf } from '../utils/path.js';
 import { formatTime } from '../utils/time.js';
 import { CensorEditor } from '../components/censor-editor.js';
 import { ChromaEditor } from '../components/chroma-editor.js';
+import { AdjustEditor } from '../components/adjust-editor.js';
 import { createFileDrop } from '../components/file-drop.js';
 import { createSendTo, createContinue } from '../components/send-to.js';
 import { draftBadge } from '../components/draft-badge.js';
@@ -23,6 +24,7 @@ const TOOLS = [
   { id: 'subtitle', label: t('Untertitel einbrennen'), action: t('Untertitel einbrennen'), needsVideo: true, icon: 'text', text: t('SRT, ASS oder VTT fest ins Bild') },
   { id: 'censor', label: t('Zensieren'), action: t('Zensiert exportieren'), needsVideo: true, icon: 'target', text: t('Stellen mit Keyframes verdecken') },
   { id: 'chroma', label: t('Greenscreen'), action: t('Hintergrund ersetzen'), needsVideo: true, icon: 'chroma', text: t('Grün oder Blau ausstanzen und den Hintergrund ersetzen') },
+  { id: 'adjust', label: t('Anpassen'), action: t('Angepasst speichern'), needsVideo: true, icon: 'rotate', text: t('Drehen, spiegeln, Ränder entfernen, beruhigen, Tempo ändern') },
 ];
 
 const state = {
@@ -38,6 +40,7 @@ let player = null;
 let editor = null;
 let censor = null;
 let chroma = null;
+let adjust = null;
 
 function setMessage(text) {
   parts.message.textContent = text;
@@ -61,18 +64,17 @@ function selectTool(id) {
     panel.hidden = panelId !== id;
   });
 
-  const showsPicture = id === 'gif' || id === 'frame' || id === 'censor' || id === 'chroma';
+  const showsPicture = id !== 'subtitle';
   parts.playerCard.hidden = !showsPicture;
   parts.columns.classList.toggle('single', !showsPicture);
   if (!showsPicture) player.video.pause();
-  // Beide Editoren stellen die Vorschaufläche um. Erst den alten abschalten, dann den neuen einschalten.
-  if (id === 'censor') {
-    chroma.setActive(false);
-    censor.setActive(true);
-  } else {
-    censor.setActive(false);
-    chroma.setActive(id === 'chroma');
-  }
+  // Die Editoren stellen die Vorschaufläche um. Erst alle abschalten, dann den gewählten einschalten.
+  censor.setActive(false);
+  chroma.setActive(false);
+  adjust.setActive(false);
+  if (id === 'censor') censor.setActive(true);
+  else if (id === 'chroma') chroma.setActive(true);
+  else if (id === 'adjust') adjust.setActive(true);
   censor.timelineRoot.hidden = id !== 'censor';
   censor.timelineHint.hidden = id !== 'censor' || censor.fields.length === 0;
   editor.root.hidden = id !== 'gif';
@@ -104,7 +106,8 @@ function renderSubtitle() {
 function updateStart() {
   parts.start.disabled = (state.tool === 'subtitle' && !state.subtitlePath)
     || (state.tool === 'censor' && censor.fields.length === 0)
-    || (state.tool === 'chroma' && !chroma.ready());
+    || (state.tool === 'chroma' && !chroma.ready())
+    || (state.tool === 'adjust' && !adjust.ready());
   parts.continueButton.disabled = parts.start.disabled;
 }
 
@@ -147,6 +150,7 @@ async function openFile(filePath) {
   editor.render();
   censor.load(media);
   chroma.load(media);
+  adjust.load(media);
 
   parts.drop.hidden = true;
   parts.workspace.hidden = false;
@@ -185,6 +189,7 @@ function toolOptions(draft = false) {
       };
     }
     case 'frame': return { ...base, time: player.video.currentTime, format: state.frameFormat };
+    case 'adjust': return { ...base, ...adjust.options() };
     default: return { ...base, subtitlePath: state.subtitlePath, fontSize: parts.subtitleSize.value };
   }
 }
@@ -237,6 +242,7 @@ function buildPage(root) {
   });
   censor = new CensorEditor({ player, onChange: () => updateStart() });
   chroma = new ChromaEditor({ player, onChange: () => parts.start && updateStart() });
+  adjust = new AdjustEditor({ player, onChange: () => parts.start && updateStart() });
   editor.root.addEventListener('input', updateGifHint);
   editor.root.addEventListener('pointerup', updateGifHint);
   editor.root.addEventListener('change', updateGifHint);
@@ -302,7 +308,7 @@ function buildPage(root) {
       state.frameFormat = value;
     }),
   );
-  parts.playerCard.append(player.root, editor.root, censor.timelineHint, censor.timelineRoot, chroma.controlsRow, parts.frameControls);
+  parts.playerCard.append(player.root, editor.root, censor.timelineHint, censor.timelineRoot, chroma.controlsRow, adjust.controlsRow, parts.frameControls);
 
   parts.subtitleChosen.append(
     el('span', { class: 'muted' }, t('Untertitel')),
@@ -322,6 +328,7 @@ function buildPage(root) {
       parts.gifHint)],
     ['censor', censor.root],
     ['chroma', chroma.root],
+    ['adjust', adjust.root],
     ['frame', el('section', { class: 'card' },
       el('p', { class: 'muted' }, t('Gespeichert wird das Bild an der aktuellen Stelle des Players. Mit den Knöpfen gehst du bildgenau vor und zurück.')))],
     ['subtitle', el('section', { class: 'card stack' },
@@ -364,7 +371,7 @@ function buildPage(root) {
 export default {
   id: 'tools',
   label: t('Werkzeuge'),
-  hint: t('GIF, Standbild, Untertitel einbrennen, Zensieren und Greenscreen.'),
+  hint: t('GIF, Standbild, Untertitel einbrennen, Zensieren, Greenscreen und Video anpassen.'),
   mount: buildPage,
   onShow(data) {
     if (data?.filePath) openFile(data.filePath);

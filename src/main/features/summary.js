@@ -286,12 +286,25 @@ async function fromFile(filePath, { tools, signal }) {
 
 // ---------------------------------------------------------------- Zusammenfassen
 
-const LANGUAGE_NAMES = { de: 'German', en: 'English' };
+// Für die Anweisung an das Modell: der englische Name der Sprache, etwa "Japanese" für "ja".
+function englishName(code) {
+  try {
+    return new Intl.DisplayNames(['en'], { type: 'language' }).of(code) ?? 'English';
+  } catch {
+    return 'English';
+  }
+}
 
 // Die Überschriften stehen schon in der Zielsprache, sonst übernimmt das Modell gern die englischen.
 const HEADINGS = {
   de: { short: 'Kurzfassung', points: 'Wichtigste Punkte', chapters: 'Kapitel' },
   en: { short: 'Summary', points: 'Key points', chapters: 'Chapters' },
+  es: { short: 'Resumen', points: 'Puntos clave', chapters: 'Capítulos' },
+  fr: { short: 'Résumé', points: 'Points clés', chapters: 'Chapitres' },
+  'pt-BR': { short: 'Resumo', points: 'Pontos principais', chapters: 'Capítulos' },
+  hi: { short: 'सारांश', points: 'मुख्य बिंदु', chapters: 'अध्याय' },
+  ja: { short: '要約', points: '主なポイント', chapters: 'チャプター' },
+  'zh-CN': { short: '摘要', points: '要点', chapters: '章节' },
 };
 
 const PART_TEXT = {
@@ -307,7 +320,7 @@ function partInstruction(part, language) {
 
 function outputLanguage(language, transcriptLanguage) {
   if (language === 'video') return transcriptLanguage ? `the language of the transcript (${transcriptLanguage})` : 'the language of the transcript';
-  return LANGUAGE_NAMES[language] ?? 'English';
+  return englishName(language);
 }
 
 function systemPrompt(language, transcriptLanguage) {
@@ -407,6 +420,133 @@ async function summarize(options, { signal, progress, store }) {
   });
 }
 
+// ---------------------------------------------------------------- Chat zum Video
+
+// Platz für den bisherigen Verlauf. Ältere Nachrichten fallen weg, wenn er voll ist.
+const HISTORY_TOKENS = 4000;
+const CHAT_ANSWER_TOKENS = 1500;
+// Kurze Wörter wie "der", "and" oder "ist" helfen bei der Suche nach passenden Stellen nicht.
+const MIN_TERM_LENGTH = 4;
+const MAX_QUESTION_CHARS = 2000;
+
+// So viele Zeichen Text passen neben Verlauf und Antwort in den Kontext.
+function chatBudget(limit) {
+  return Math.max(0, (limit - CHAT_ANSWER_TOKENS - HISTORY_TOKENS - 1000) * CHARS_PER_TOKEN);
+}
+
+async function chatLimit(options, store) {
+  if (options.engine === 'online') return online.onlineEngine(store).limit;
+  const status = await ollamaStatus();
+  const info = status.models.find((entry) => entry.name === options.model);
+  return Math.min(MAX_CONTEXT, info?.context ?? MAX_CONTEXT);
+}
+
+// Der neueste Teil des Verlaufs, der noch in den Platz passt, immer als Paar aus Frage und Antwort.
+function recentHistory(history) {
+  const clean = (Array.isArray(history) ? history : [])
+    .filter((message) => ['user', 'assistant'].includes(message?.role) && typeof message.content === 'string' && message.content.trim())
+    .map((message) => ({ role: message.role, content: message.content.slice(0, 8000) }));
+  const kept = [];
+  let size = 0;
+  for (let index = clean.length - 1; index >= 0; index -= 1) {
+    size += clean[index].content.length;
+    if (size > HISTORY_TOKENS * CHARS_PER_TOKEN) break;
+    kept.unshift(clean[index]);
+  }
+  while (kept.length && kept[0].role !== 'user') kept.shift();
+  return kept;
+}
+
+const termsOf = (text) => [...new Set(String(text).toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])]
+  .filter((word) => word.length >= MIN_TERM_LENGTH || /^\d+$/.test(word))
+  // Ein gekürzter Wortstamm findet auch "Kameras" bei "Kamera".
+  .map((word) => (word.length > 6 ? word.slice(0, word.length - 2) : word));
+
+// Für lange Videos: die Zeilen, in denen die Wörter der Frage vorkommen, samt ihren Nachbarn.
+// Seltene Wörter zählen mehr als solche, die überall stehen.
+function pickPassages(lines, query, maxChars) {
+  const terms = termsOf(query);
+  const lower = lines.map((line) => line.toLowerCase());
+  const weights = terms.map((term) => {
+    const count = lower.filter((line) => line.includes(term)).length;
+    return count ? Math.log(1 + lines.length / count) : 0;
+  });
+  const scored = lower.map((line, index) => ({
+    index,
+    score: terms.reduce((sum, term, termIndex) => sum + (line.includes(term) ? weights[termIndex] : 0), 0),
+  })).filter((entry) => entry.score > 0).sort((a, b) => b.score - a.score);
+
+  const chosen = new Set();
+  let size = 0;
+  const take = (index) => {
+    if (index < 0 || index >= lines.length || chosen.has(index)) return true;
+    if (size + lines[index].length + 1 > maxChars) return false;
+    chosen.add(index);
+    size += lines[index].length + 1;
+    return true;
+  };
+  for (const { index } of scored) {
+    if (!take(index)) break;
+    take(index - 1);
+    take(index + 1);
+  }
+  // Ohne Treffer, etwa bei "Worum geht es?", wird gleichmäßig über das Video verteilt gelesen.
+  if (!chosen.size) {
+    const step = Math.max(1, Math.ceil(lines.reduce((sum, line) => sum + line.length + 1, 0) / Math.max(1, maxChars)));
+    for (let index = 0; index < lines.length; index += step) if (!take(index)) break;
+  }
+  const sorted = [...chosen].sort((a, b) => a - b);
+  return sorted.map((index, position) => (position && index !== sorted[position - 1] + 1 ? `…\n${lines[index]}` : lines[index])).join('\n');
+}
+
+function chatSystem(meta, material, excerpts) {
+  return [
+    'You talk with the user about one video. You know the video only from its transcript, which has time stamps in the form [mm:ss].',
+    'Always answer in the language of the user\'s latest message, even if the transcript is in another language.',
+    'Base statements about the video on the transcript and add the time stamp [mm:ss] where the video says it.',
+    'If the transcript does not cover something, say so clearly. You may then add general knowledge, but mark it as not coming from the video.',
+    'If the user wants to discuss, give a reasoned view and say which parts are your own assessment.',
+    'Keep answers short and to the point unless the user asks for more detail. Use Markdown only for short lists and bold text.',
+    excerpts
+      ? 'The video is too long to show completely. You only see an overview and the passages that matched the question. If the answer could be in parts you do not see, say so.'
+      : null,
+    '',
+    header(meta),
+    '',
+    material,
+  ].filter((line) => line !== null).join('\n');
+}
+
+async function chatAbout(options, { signal, store, onText }) {
+  const { meta, blocks } = options;
+  const question = String(options.question ?? '').trim().slice(0, MAX_QUESTION_CHARS);
+  if (!question) throw new UserError(t('Bitte gib eine Frage ein.'));
+  const engine = await resolveEngine(options, store);
+  const lines = blocks.map(blockLine);
+  const text = lines.join('\n');
+  const history = recentHistory(options.history);
+  const budget = chatBudget(engine.limit);
+  const summary = String(options.summary ?? '').trim().slice(0, 6000);
+
+  let material = `Transcript:\n${text}`;
+  const excerpts = text.length > budget;
+  if (excerpts) {
+    // Die vorige Frage hilft bei Nachfragen wie "Und warum?".
+    const previous = history.filter((message) => message.role === 'user').slice(-1).map((message) => message.content).join(' ');
+    const overview = summary ? `Summary of the whole video:\n${summary}\n\n` : '';
+    material = `${overview}Passages of the transcript that may matter for the question, in order:\n${pickPassages(lines, `${question} ${previous}`, budget - overview.length)}`;
+  }
+  const messages = [
+    { role: 'system', content: chatSystem(meta, material, excerpts) },
+    ...history,
+    { role: 'user', content: question },
+  ];
+  const used = messages.reduce((sum, message) => sum + message.content.length, 0);
+  const context = Math.max(MIN_CONTEXT, Math.min(engine.limit, Math.ceil(used / CHARS_PER_TOKEN) + CHAT_ANSWER_TOKENS + 500));
+  const answer = await engine.chat({ signal, context, onText, messages });
+  return { text: answer, excerpts };
+}
+
 // ---------------------------------------------------------------- IPC
 
 // Segmente aus Transkribieren, ohne den Umweg über eine Datei.
@@ -422,6 +562,7 @@ function fromTranscript(transcript) {
 function register({ ipcMain, tools, ytdlp, send, store }) {
   let loading = null;
   let running = null;
+  let chatting = null;
   online.register({ ipcMain, store, shell });
 
   const loaded = (meta) => {
@@ -487,6 +628,57 @@ function register({ ipcMain, tools, ytdlp, send, store }) {
     }
   });
 
+  // Passt der ganze Text neben dem Verlauf ins Modell? Sonst liest der Chat nur passende Stellen.
+  ipcMain.handle('summary:chatFits', async (_event, { engine, model, chars }) => {
+    try {
+      return { ok: true, fits: chars <= chatBudget(await chatLimit({ engine, model }, store)) };
+    } catch {
+      return { ok: false };
+    }
+  });
+
+  ipcMain.handle('summary:chat', async (_event, options) => {
+    chatting?.abort();
+    const controller = new AbortController();
+    chatting = controller;
+    try {
+      const result = await chatAbout(options, {
+        signal: controller.signal,
+        store,
+        onText: (text) => send('summary:chatProgress', { id: options.id, text }),
+      });
+      if (!result.text) throw new UserError(t('Das Modell hat keinen Text geliefert. Versuche es noch einmal oder wähle ein anderes Modell.'));
+      return { ok: true, ...result };
+    } catch (error) {
+      if (controller.signal.aborted || error?.name === 'AbortError') return { ok: false, canceled: true };
+      const unreachable = /fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT/i.test(String(error?.cause ?? error?.message ?? ''));
+      let message = toGermanMessage(error);
+      if (unreachable) {
+        message = options.engine === 'online'
+          ? t('Der Dienst ist nicht erreichbar. Prüfe die Internetverbindung und die Adresse.')
+          : t('Ollama läuft nicht. Starte Ollama und versuche es noch einmal.');
+      }
+      return { ok: false, error: message };
+    } finally {
+      if (chatting === controller) chatting = null;
+    }
+  });
+
+  ipcMain.handle('summary:chatCancel', () => chatting?.abort());
+
+  // Zeitmarken aus dem Chat öffnen das Video im Browser an dieser Stelle. Nur echte Webadressen.
+  ipcMain.handle('summary:openLinkAt', (_event, { url, seconds }) => {
+    let address;
+    try {
+      address = new URL(url);
+    } catch {
+      return;
+    }
+    if (!['http:', 'https:'].includes(address.protocol)) return;
+    address.searchParams.set('t', `${Math.max(0, Math.floor(Number(seconds) || 0))}s`);
+    shell.openExternal(address.toString());
+  });
+
   ipcMain.handle('summary:cancel', () => {
     running?.abort();
     loading?.abort();
@@ -505,4 +697,4 @@ function register({ ipcMain, tools, ytdlp, send, store }) {
   });
 }
 
-module.exports = { register, toBlocks, parseCues, parseTranscriptFile, pickSubtitles };
+module.exports = { register, toBlocks, parseCues, parseTranscriptFile, pickSubtitles, pickPassages, recentHistory };

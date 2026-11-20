@@ -1,5 +1,72 @@
 [
   {
+    "version": "0.7.0",
+    "de": [
+      "Fragen zum Video: Unter der Zusammenfassung kannst du mit dem Video chatten, nachhaken und darüber diskutieren. Zeitmarken in den Antworten und Kapiteln springen per Klick an die Stelle. Bei langen Videos sucht der Chat die passenden Stellen heraus und sagt dir das auch.",
+      "Neues Werkzeug Anpassen: Video drehen, spiegeln, schwarze Ränder entfernen, Verwackeltes beruhigen und das Tempo ändern, alles in einem Durchgang und mit Vorschau.",
+      "Beim Download lassen sich Untertitel und Kapitel direkt in die Datei einbetten. Auf Wunsch überspringt SponsorBlock Werbung, Eigenwerbung und Aufrufe zum Abonnieren.",
+      "Vitool gibt es jetzt auch auf Spanisch, Französisch, Portugiesisch (Brasilien), Hindi, Japanisch und Chinesisch.",
+      "Die Lautstärke der Vorschau lässt sich überall einstellen und bleibt gespeichert, auch bei Greenscreen, KI-Maske und der Hörprobe im Ton-Bereich.",
+      "Der Knopf Zusammenfassen in Transkribieren wird wieder richtig angezeigt."
+    ],
+    "en": [
+      "Questions about the video: below the summary you can chat with the video, follow up and discuss it. Time stamps in answers and chapters jump to that moment with a click. For long videos the chat picks the matching passages and tells you so.",
+      "New Adjust tool: rotate, flip, remove black borders, stabilize shaky footage and change the speed, all in one pass and with a preview.",
+      "Downloads can embed subtitles and chapters right into the file. If you like, SponsorBlock skips sponsor segments, self-promotion and calls to subscribe.",
+      "Vitool now also speaks Spanish, French, Portuguese (Brazil), Hindi, Japanese and Chinese.",
+      "The preview volume can be set everywhere and is remembered, including Green screen, AI Mask and the preview in the Audio area.",
+      "The Summarize button in Transcribe looks right again."
+    ],
+    "es": [
+      "Preguntas sobre el vídeo: debajo del resumen puedes chatear con el vídeo, preguntar más y debatirlo. Las marcas de tiempo de las respuestas y los capítulos saltan a ese momento con un clic. En vídeos largos, el chat busca los pasajes adecuados y te lo indica.",
+      "Nueva herramienta Ajustar: girar, voltear, quitar bordes negros, estabilizar imágenes movidas y cambiar la velocidad, todo en una pasada y con vista previa.",
+      "Las descargas pueden incrustar subtítulos y capítulos directamente en el archivo. Si quieres, SponsorBlock salta patrocinios, autopromoción y llamadas a suscribirse.",
+      "Vitool ahora también está en español, francés, portugués (Brasil), hindi, japonés y chino.",
+      "El volumen de la vista previa se puede ajustar en todas partes y se recuerda, también en Pantalla verde, Máscara IA y la vista previa del área Audio.",
+      "El botón Resumir de Transcribir vuelve a verse bien."
+    ],
+    "fr": [
+      "Questions sur la vidéo : sous le résumé, tu peux discuter avec la vidéo, approfondir et en débattre. Les horodatages des réponses et des chapitres mènent à ce moment d’un clic. Pour les vidéos longues, le chat cherche les passages correspondants et te le signale.",
+      "Nouvel outil Ajuster : pivoter, retourner, retirer les bords noirs, stabiliser les images tremblées et changer la vitesse, le tout en une passe et avec aperçu.",
+      "Les téléchargements peuvent intégrer sous-titres et chapitres directement dans le fichier. Si tu veux, SponsorBlock passe les sponsors, l’autopromotion et les appels à s’abonner.",
+      "Vitool parle désormais aussi espagnol, français, portugais (Brésil), hindi, japonais et chinois.",
+      "Le volume de l’aperçu se règle partout et est mémorisé, y compris pour le fond vert, le masque IA et l’aperçu de l’espace Audio.",
+      "Le bouton Résumer dans Transcrire s’affiche de nouveau correctement."
+    ],
+    "pt-BR": [
+      "Perguntas sobre o vídeo: abaixo do resumo você pode conversar com o vídeo, aprofundar e discutir. As marcações de tempo nas respostas e nos capítulos levam a esse momento com um clique. Em vídeos longos, o chat busca os trechos certos e avisa você.",
+      "Nova ferramenta Ajustar: girar, espelhar, remover bordas pretas, estabilizar imagens tremidas e mudar a velocidade, tudo de uma vez e com prévia.",
+      "Os downloads podem incorporar legendas e capítulos direto no arquivo. Se quiser, o SponsorBlock pula patrocínios, autopromoção e pedidos de inscrição.",
+      "O Vitool agora também fala espanhol, francês, português (Brasil), hindi, japonês e chinês.",
+      "O volume da prévia pode ser ajustado em todo lugar e fica salvo, inclusive na tela verde, na Máscara IA e na prévia da área Áudio.",
+      "O botão Resumir no Transcrever voltou a aparecer corretamente."
+    ],
+    "hi": [
+      "वीडियो के बारे में सवाल: सारांश के नीचे आप वीडियो से चैट कर सकते हैं, आगे पूछ सकते हैं और उस पर चर्चा कर सकते हैं। जवाबों और चैप्टर के टाइमस्टैम्प पर क्लिक करते ही उस जगह पहुंच जाते हैं। लंबे वीडियो में चैट मिलते-जुलते अंश ढूंढता है और यह आपको बताता भी है।",
+      "नया टूल एडजस्ट: वीडियो घुमाएं, पलटें, काले किनारे हटाएं, हिलती तस्वीर स्थिर करें और गति बदलें, सब एक बार में और प्रीव्यू के साथ।",
+      "डाउनलोड में सबटाइटल और चैप्टर सीधे फ़ाइल में जोड़े जा सकते हैं। चाहें तो SponsorBlock स्पॉन्सर, खुद का प्रचार और सब्सक्राइब करने की अपीलें छोड़ देता है।",
+      "Vitool अब स्पैनिश, फ़्रेंच, पुर्तगाली (ब्राज़ील), हिन्दी, जापानी और चीनी में भी है।",
+      "प्रीव्यू की आवाज़ हर जगह सेट की जा सकती है और याद रहती है, ग्रीन स्क्रीन, AI मास्क और ऑडियो वाले हिस्से के प्रीव्यू में भी।",
+      "ट्रांसक्राइब में सारांश वाला बटन फिर से ठीक दिखता है।"
+    ],
+    "ja": [
+      "動画についての質問: 要約の下で動画とチャットし、さらに質問したり議論したりできます。回答やチャプターのタイムスタンプをクリックすると、その場面に移動します。長い動画では、チャットが関連する箇所を探し、そのことを知らせます。",
+      "新しいツール「調整」: 回転、反転、黒い余白の除去、手ぶれ補正、速度の変更を、プレビュー付きで一度に行えます。",
+      "ダウンロード時に字幕とチャプターをファイルに直接埋め込めます。必要なら SponsorBlock でスポンサー区間、自己宣伝、チャンネル登録の呼びかけをスキップできます。",
+      "Vitool はスペイン語、フランス語、ポルトガル語（ブラジル）、ヒンディー語、日本語、中国語にも対応しました。",
+      "プレビューの音量はどこでも調整でき、保存されます。グリーンバック、AI マスク、オーディオのプレビューも同様です。",
+      "文字起こしの「要約」ボタンが再び正しく表示されます。"
+    ],
+    "zh-CN": [
+      "关于视频的问题：在摘要下方可以与视频对话、继续追问并展开讨论。点击回答和章节中的时间戳即可跳到对应位置。对于长视频，聊天会查找相关段落，并会告诉你这一点。",
+      "新工具“调整”：旋转、翻转、去除黑边、稳定晃动的画面和改变速度，一次完成并可预览。",
+      "下载时可以把字幕和章节直接嵌入文件。如有需要，SponsorBlock 会跳过赞助、自我推广和订阅呼吁。",
+      "Vitool 现在还支持西班牙语、法语、葡萄牙语（巴西）、印地语、日语和中文。",
+      "预览音量可以在任何地方调节并会被记住，绿幕、AI 遮罩和音频区域的试听也一样。",
+      "“转录”中的“摘要”按钮重新正常显示。"
+    ]
+  },
+  {
     "version": "0.6.0",
     "de": [
       "Neuer Bereich Zusammenfassen: Worum es in einem Video geht, als Kurzfassung, wichtigste Punkte und Kapitel mit Zeitmarken. Das läuft auf deinem PC über Ollama, auf Wunsch auch über einen Online-Dienst mit eigenem API-Schlüssel.",

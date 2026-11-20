@@ -27,7 +27,7 @@ function setMessage(text) {
   parts.message.hidden = !text;
 }
 
-async function openFile(filePath, sections = null) {
+async function openFile(filePath, sections = null, time = null) {
   setMessage('');
   const response = await invoke('media:probe', filePath);
   if (!response.ok) {
@@ -62,6 +62,10 @@ async function openFile(filePath, sections = null) {
   }
   editor.ensureRange();
   player.load(media);
+  // Aus dem Chat in Zusammenfassen: gleich an die genannte Stelle springen.
+  if (Number.isFinite(time) && time > 0) {
+    player.video.addEventListener('loadedmetadata', () => { player.video.currentTime = Math.min(time, media.duration ?? time); }, { once: true });
+  }
   parts.drop.hidden = true;
   parts.workspace.hidden = false;
 }
@@ -191,7 +195,7 @@ export default {
   mount: buildPage,
   onShow(data) {
     state.visible = true;
-    if (data?.filePath) openFile(data.filePath, data.sections);
+    if (data?.filePath) openFile(data.filePath, data.sections, data.time);
   },
   onHide() {
     state.visible = false;

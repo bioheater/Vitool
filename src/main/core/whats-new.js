@@ -8,7 +8,8 @@ const { currentLanguage } = require('./i18n');
 function register({ ipcMain, store }) {
   const current = app.getVersion();
   const language = currentLanguage();
-  const describe = (entry) => ({ version: entry.version, items: entry[language] ?? entry.de });
+  // Ältere Einträge gibt es nur auf Deutsch und Englisch. Andere Sprachen bekommen dann die englischen.
+  const describe = (entry) => ({ version: entry.version, items: entry[language] ?? (language === 'de' ? entry.de : entry.en ?? entry.de) });
   const upTo = (entry) => !isNewer(entry.version, current);
 
   // Bei einer frischen Installation gibt es nichts nachzuholen. Gab es die Daten schon, fehlt aber die zuletzt

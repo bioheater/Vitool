@@ -14,7 +14,7 @@ const ROTATE_SNAP = 15;
 const VISIBLE_PART = 0.03;
 
 const SHAPES = [{ value: 'rect', text: t('Rechteck') }, { value: 'ellipse', text: t('Oval') }];
-const EFFECTS = [{ value: 'blur', text: 'Blur' }, { value: 'pixel', text: t('Verpixeln') }, { value: 'black', text: t('Schwarz') }];
+const EFFECTS = [{ value: 'blur', text: t('Blur') }, { value: 'pixel', text: t('Verpixeln') }, { value: 'black', text: t('Schwarz') }];
 const MOTIONS = [{ value: 'glide', text: t('Gleiten') }, { value: 'jump', text: t('Springen') }];
 
 function clamp(value, min, max) {

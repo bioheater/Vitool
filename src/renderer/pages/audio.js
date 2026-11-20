@@ -10,6 +10,7 @@ import { createSendTo, createContinue } from '../components/send-to.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { sendTo } from '../utils/navigation.js';
 import { draftBadge } from '../components/draft-badge.js';
+import { volumeControl, registerMedia } from '../utils/volume.js';
 import { t, LANGUAGE } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
@@ -590,7 +591,11 @@ function buildPage(root) {
   parts.probeControls = el('div', { class: 'action-row', hidden: true },
     el('div', { class: 'segments', role: 'group', 'aria-label': t('Hörprobe') }, parts.probeOriginalButton, parts.probeProcessedButton),
     parts.probePlay,
-    parts.probeTime);
+    parts.probeTime,
+    volumeControl());
+  // Die Hörprobe hängt nicht im Dokument, sie bekommt die Lautstärke direkt.
+  registerMedia(parts.probeOriginal);
+  registerMedia(parts.probeProcessed);
   parts.probeStatus = el('p', { class: 'muted', hidden: true });
   parts.probeHint = el('p', { class: 'muted', hidden: true });
   parts.continueButton = createContinue({

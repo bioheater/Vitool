@@ -3,7 +3,7 @@
 import { el, icon, pageHeader } from '../utils/dom.js';
 import { ICONS } from '../utils/icons.js';
 import { createFileDrop } from '../components/file-drop.js';
-import { openPage } from '../utils/navigation.js';
+import { openPage, isMediaFile } from '../utils/navigation.js';
 import { t, LANGUAGE } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
@@ -13,7 +13,17 @@ const PARTS = [
   { id: 'points', label: t('Wichtigste Punkte') },
   { id: 'chapters', label: t('Kapitel mit Zeitmarken') },
 ];
+// Die Sprache der Oberfläche steht vorne, dazu Deutsch, Englisch und die Sprache des Videos.
+function ownLanguageName() {
+  try {
+    const name = new Intl.DisplayNames([LANGUAGE], { type: 'language' }).of(LANGUAGE);
+    return name ? name[0].toUpperCase() + name.slice(1) : LANGUAGE;
+  } catch {
+    return LANGUAGE;
+  }
+}
 const LANGUAGES = [
+  ...(['de', 'en'].includes(LANGUAGE) ? [] : [{ value: LANGUAGE, text: ownLanguageName() }]),
   { value: 'de', text: t('Deutsch') },
   { value: 'en', text: t('Englisch') },
   { value: 'video', text: t('Wie das Video') },
@@ -38,7 +48,13 @@ const state = {
   loaded: null,
   recognizing: false,
   parts: new Set(['short', 'points', 'chapters']),
-  language: LANGUAGE === 'de' ? 'de' : 'en',
+  // Chat zum Video: Verlauf mit { role, content, excerpts }, gehört zum geladenen Video.
+  chat: [],
+  chatBusy: false,
+  chatId: 0,
+  // Passt der ganze Text in das gewählte Modell? null, solange es niemand geprüft hat.
+  chatFits: null,
+  language: LANGUAGE,
   running: false,
   text: '',
 };
@@ -106,6 +122,7 @@ function renderEngine() {
   parts.setupNoModel.hidden = !state.status?.running || state.status.models.length > 0;
   if (!local && !onlineReady()) renderOnlineSetup(true);
   renderStart();
+  checkChatFits();
 }
 
 // Der Hinweis nennt den Dienst, der gerade gewählt ist, auch während der Einrichtung.
@@ -199,6 +216,10 @@ function resetSource(title) {
   parts.sourceTitle.textContent = title;
   parts.transcript.hidden = true;
   setMessage('');
+  // Neues Video, neuer Chat.
+  state.chatFits = null;
+  renderLongNotice();
+  resetChat();
 }
 
 async function loadSource(source) {
@@ -220,8 +241,8 @@ async function loadSource(source) {
 }
 
 async function loadTranscript(transcript) {
-  state.source = null;
   resetSource(transcript.title ?? '');
+  state.source = transcript.source ?? null;
   const response = await invoke('summary:fromTranscript', transcript);
   if (!response.ok) {
     setMessage(response.error);
@@ -244,6 +265,8 @@ function showLoaded(response) {
     .map((block) => (block.start === null ? block.text : `${clock(block.start)}  ${block.text}`)).join('\n');
   parts.transcript.hidden = false;
   renderStart();
+  renderChat();
+  checkChatFits();
 }
 
 // Ohne Untertitel kann Whisper die Sprache erkennen. Ist Transkribieren noch nicht eingerichtet, steht hier wie.
@@ -319,12 +342,16 @@ function clock(seconds) {
 
 // ---------------------------------------------------------------- Zusammenfassen
 
+function engineReady() {
+  return state.engine === 'online' ? onlineReady() : Boolean(state.status?.running && parts.model.value);
+}
+
 function renderStart() {
-  const engineReady = state.engine === 'online' ? onlineReady() : Boolean(state.status?.running && parts.model.value);
   parts.start.hidden = state.running;
   parts.cancel.hidden = !state.running;
-  parts.start.disabled = !(state.loaded && engineReady && state.parts.size > 0);
+  parts.start.disabled = !(state.loaded && engineReady() && state.parts.size > 0);
   parts.optionsCard.hidden = !state.loaded;
+  renderChatInput();
 }
 
 async function startSummary() {
@@ -373,16 +400,50 @@ function onProgress({ phase, part, total, text }) {
   }
 }
 
-// Einfaches Markdown: Überschriften, Aufzählungen und Fettes. Alles andere bleibt Text.
-function inline(text) {
+// Zeitmarken springen an die Stelle: bei einer Videodatei im Bereich Schneiden, bei YouTube im Browser.
+function timeTarget() {
+  const source = state.source ?? '';
+  if (/^https?:\/\/([^/]+\.)?(youtube\.com|youtu\.be)\//i.test(source)) return 'link';
+  if (source && !/^https?:/i.test(source) && isMediaFile(source)) return 'file';
+  return null;
+}
+
+function jumpTo(seconds) {
+  if (timeTarget() === 'file') openPage('cut', { filePath: state.source, time: seconds });
+  else if (timeTarget() === 'link') invoke('summary:openLinkAt', { url: state.source, seconds });
+}
+
+function withTimes(text) {
+  if (!timeTarget()) return [text];
   const nodes = [];
   let last = 0;
-  for (const match of text.matchAll(/\*\*(.+?)\*\*/g)) {
+  // Eckige Klammern um die Zeit fallen weg, die Marke ist schon als Knopf zu erkennen.
+  for (const match of text.matchAll(/\[?\b(\d{1,2}):([0-5]\d)(?::([0-5]\d))?\b\]?/g)) {
+    const seconds = match[3] === undefined
+      ? Number(match[1]) * 60 + Number(match[2])
+      : Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
     if (match.index > last) nodes.push(text.slice(last, match.index));
-    nodes.push(el('strong', {}, match[1]));
+    nodes.push(el('button', {
+      class: 'time-link',
+      title: timeTarget() === 'file' ? t('Im Bereich Schneiden an dieser Stelle öffnen') : t('Im Browser an dieser Stelle öffnen'),
+      onclick: () => jumpTo(seconds),
+    }, match[0].replace(/^\[|\]$/g, '')));
     last = match.index + match[0].length;
   }
   if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+
+// Einfaches Markdown: Überschriften, Aufzählungen, Fettes und Kursives. Alles andere bleibt Text.
+function inline(text) {
+  const nodes = [];
+  let last = 0;
+  for (const match of text.matchAll(/\*\*(.+?)\*\*|(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])/g)) {
+    if (match.index > last) nodes.push(...withTimes(text.slice(last, match.index)));
+    nodes.push(match[1] !== undefined ? el('strong', {}, ...withTimes(match[1])) : el('em', {}, ...withTimes(match[2])));
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) nodes.push(...withTimes(text.slice(last)));
   return nodes;
 }
 
@@ -419,9 +480,191 @@ async function copyResult() {
   setTimeout(() => { parts.copy.textContent = t('Kopieren'); }, 1500);
 }
 
+// Zusammenfassung und Chat landen zusammen in einer Datei, je nachdem, was es gibt.
+function exportText() {
+  const sections = [];
+  if (state.text.trim()) sections.push(state.text.trim());
+  const chat = state.chat.filter((message) => message.content.trim());
+  if (chat.length) {
+    sections.push([
+      `## ${t('Fragen zum Video')}`,
+      ...chat.map((message) => (message.role === 'user' ? `**${message.content.trim().replace(/\n+/g, ' ')}**` : message.content.trim())),
+    ].join('\n\n'));
+  }
+  return sections.join('\n\n');
+}
+
 async function saveResult() {
-  const response = await invoke('summary:save', { text: state.text, name: `${state.loaded?.meta.title ?? 'Video'} (${t('Zusammenfassung')})` });
+  const name = state.text.trim() ? t('Zusammenfassung') : t('Fragen zum Video');
+  const response = await invoke('summary:save', { text: exportText(), name: `${state.loaded?.meta.title ?? 'Video'} (${name})` });
   if (response.ok) setMessage('');
+}
+
+// ---------------------------------------------------------------- Chat zum Video
+
+const SUGGESTIONS = [
+  t('Worum geht es im Kern?'),
+  t('Welche Tipps oder Empfehlungen gibt es?'),
+  t('Was davon ist fraglich oder umstritten?'),
+];
+
+function chatChars() {
+  return (state.loaded?.blocks ?? []).reduce((sum, block) => sum + block.text.length + 9, 0);
+}
+
+// Ob der ganze Text ins Modell passt, hängt vom gewählten Modell ab. Bei jedem Wechsel neu prüfen.
+async function checkChatFits() {
+  if (!state.loaded || !engineReady()) {
+    state.chatFits = null;
+    renderLongNotice();
+    return;
+  }
+  const loaded = state.loaded;
+  const response = await invoke('summary:chatFits', { engine: state.engine, model: parts.model.value, chars: chatChars() });
+  if (state.loaded !== loaded) return;
+  state.chatFits = response.ok ? response.fits : null;
+  renderLongNotice();
+}
+
+function renderLongNotice() {
+  const long = state.chatFits === false;
+  parts.longNotice.hidden = !long;
+  if (!long) return;
+  parts.longNotice.textContent = state.engine === 'online'
+    ? t('Langes Video: Der Text ist zu lang, um ihn bei jeder Frage ganz mitzuschicken. Der Chat sucht deshalb zu jeder Frage die passenden Stellen heraus. Fragen zum ganzen Video beantwortet er dann ungenauer. Eine Zusammenfassung vorher hilft, der Chat nutzt sie als Überblick.')
+    : t('Langes Video: Das Modell auf deinem PC kann nicht den ganzen Text auf einmal lesen. Der Chat sucht deshalb zu jeder Frage die passenden Stellen heraus. Fragen zum ganzen Video, etwa nach dem roten Faden, beantwortet er dann ungenauer. Eine Zusammenfassung vorher hilft, der Chat nutzt sie als Überblick. Ein Online-Dienst kann deutlich mehr Text auf einmal lesen.');
+}
+
+function resetChat() {
+  if (state.chatBusy) invoke('summary:chatCancel');
+  state.chat = [];
+  state.chatBusy = false;
+  state.chatId += 1;
+  renderChat();
+}
+
+function chatMessage(message) {
+  if (message.role === 'user') return el('div', { class: 'chat-msg user' }, message.content);
+  const body = message.content
+    ? renderMarkdown(message.content)
+    : [el('span', { class: 'chat-typing', 'aria-label': t('Schreibt …') }, el('i'), el('i'), el('i'))];
+  return el('div', { class: `chat-msg assistant${message.error ? ' error' : ''}` },
+    ...body,
+    message.excerpts ? el('p', { class: 'chat-note' }, t('Aus passenden Stellen des Videos beantwortet')) : null,
+    message.canceled ? el('p', { class: 'chat-note' }, t('Abgebrochen')) : null);
+}
+
+function renderChat() {
+  parts.chatCard.hidden = !state.loaded;
+  const nearBottom = parts.chatLog.scrollHeight - parts.chatLog.scrollTop - parts.chatLog.clientHeight < 60;
+  if (!state.chat.length) {
+    parts.chatLog.replaceChildren(parts.chatEmpty);
+  } else {
+    parts.chatLog.replaceChildren(...state.chat.map(chatMessage));
+    if (nearBottom || state.chatBusy) parts.chatLog.scrollTop = parts.chatLog.scrollHeight;
+  }
+  parts.chatReset.hidden = !state.chat.length;
+  parts.chatSave.hidden = !state.chat.some((message) => message.role === 'assistant' && message.content && !message.error);
+  renderChatInput();
+}
+
+function renderChatInput() {
+  if (!parts.chatInput) return;
+  const ready = Boolean(state.loaded && engineReady());
+  parts.chatInput.disabled = !ready;
+  parts.chatSend.hidden = state.chatBusy;
+  parts.chatStop.hidden = !state.chatBusy;
+  parts.chatSend.disabled = !ready || !parts.chatInput.value.trim();
+  parts.chatSuggestions.forEach((button) => { button.disabled = !ready || state.chatBusy; });
+  parts.chatHint.hidden = ready || !state.loaded;
+}
+
+function growInput() {
+  parts.chatInput.style.height = 'auto';
+  parts.chatInput.style.height = `${Math.min(parts.chatInput.scrollHeight + 2, 160)}px`;
+}
+
+async function sendQuestion(text) {
+  const question = String(text ?? parts.chatInput.value).trim();
+  if (!question || !state.loaded || state.chatBusy || !engineReady()) return;
+  parts.chatInput.value = '';
+  growInput();
+  const history = state.chat.filter((message) => !message.error && message.content).map(({ role, content }) => ({ role, content }));
+  const answer = { role: 'assistant', content: '' };
+  state.chat.push({ role: 'user', content: question }, answer);
+  state.chatBusy = true;
+  state.chatId += 1;
+  const id = state.chatId;
+  renderChat();
+  const response = await invoke('summary:chat', {
+    id,
+    engine: state.engine,
+    model: parts.model.value,
+    meta: state.loaded.meta,
+    blocks: state.loaded.blocks,
+    summary: state.text,
+    history,
+    question,
+  });
+  // Neues Video oder neuer Chat in der Zwischenzeit: die Antwort gehört nicht mehr hierher.
+  if (id !== state.chatId) return;
+  state.chatBusy = false;
+  if (response.ok) {
+    answer.content = response.text;
+    answer.excerpts = response.excerpts;
+  } else if (response.canceled) {
+    answer.canceled = true;
+    if (!answer.content) state.chat.splice(state.chat.indexOf(answer) - 1, 2);
+  } else {
+    answer.content = response.error;
+    answer.error = true;
+  }
+  renderChat();
+  parts.chatInput.focus();
+}
+
+function onChatProgress({ id, text }) {
+  if (id !== state.chatId || !state.chatBusy) return;
+  const answer = state.chat.at(-1);
+  answer.content += text;
+  renderChat();
+}
+
+function buildChat() {
+  parts.chatInput = el('textarea', {
+    class: 'input chat-input',
+    rows: 1,
+    placeholder: t('Frage zum Video stellen …'),
+    'aria-label': t('Frage zum Video'),
+    oninput: () => {
+      growInput();
+      renderChatInput();
+    },
+    onkeydown: (event) => {
+      // Enter schickt ab, Umschalt+Enter macht eine neue Zeile.
+      if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+        event.preventDefault();
+        sendQuestion();
+      }
+    },
+  });
+  parts.chatSend = el('button', { class: 'button primary', onclick: () => sendQuestion() }, t('Senden'));
+  parts.chatStop = el('button', { class: 'button', hidden: true, onclick: () => invoke('summary:chatCancel') }, t('Stopp'));
+  parts.chatSuggestions = SUGGESTIONS.map((text) => el('button', { class: 'chip', onclick: () => sendQuestion(text) }, text));
+  parts.chatEmpty = el('div', { class: 'chat-empty' },
+    el('p', { class: 'muted' }, t('Frag nach Details, lass dir etwas erklären oder diskutiere darüber. Die Antworten stützen sich auf den Text des Videos, mit Zeitmarken zum Nachsehen.')),
+    el('div', { class: 'chat-suggestions' }, ...parts.chatSuggestions));
+  parts.chatLog = el('div', { class: 'chat-log', 'aria-live': 'polite' });
+  parts.longNotice = el('p', { class: 'notice', hidden: true });
+  parts.chatHint = el('p', { class: 'muted', hidden: true }, t('Richte oben zuerst ein Sprachmodell ein.'));
+  parts.chatReset = el('button', { class: 'button small', hidden: true, onclick: resetChat }, t('Neuer Chat'));
+  parts.chatSave = el('button', { class: 'button small', hidden: true, onclick: saveResult }, t('Speichern …'));
+  parts.chatCard = el('section', { class: 'card stack summary-chat', hidden: true },
+    el('div', { class: 'folder-row' }, el('h2', {}, t('Fragen zum Video')), el('span', { class: 'spacer' }), parts.chatSave, parts.chatReset),
+    parts.longNotice,
+    parts.chatLog,
+    el('div', { class: 'chat-compose' }, parts.chatInput, parts.chatSend, parts.chatStop),
+    parts.chatHint);
 }
 
 // ---------------------------------------------------------------- Seite
@@ -505,7 +748,14 @@ function buildPage(root) {
         if (event.key === 'Enter') loadSource(parts.url.value.trim());
       },
     }),
-    model: el('select', { class: 'input', 'aria-label': t('Modell'), onchange: renderStart }),
+    model: el('select', {
+      class: 'input',
+      'aria-label': t('Modell'),
+      onchange: () => {
+        renderStart();
+        checkChatFits();
+      },
+    }),
     start: el('button', { class: 'button primary large', onclick: startSummary }, t('Zusammenfassen')),
     cancel: el('button', { class: 'button large', hidden: true, onclick: () => invoke('summary:cancel') }, t('Abbrechen')),
     progress: el('p', { class: 'muted', hidden: true }),
@@ -521,6 +771,7 @@ function buildPage(root) {
   buildSetup();
   buildOnlineSetup();
   buildNoText();
+  buildChat();
   parts.transcript = el('details', { class: 'summary-details', hidden: true }, el('summary', {}, t('Text ansehen')), parts.transcriptText);
   parts.resultActions = el('div', { class: 'action-row', hidden: true },
     parts.copy,
@@ -584,7 +835,7 @@ function buildPage(root) {
     parts.resultActions);
 
   root.append(
-    pageHeader(t('Zusammenfassen'), t('Worum es in einem Video geht, in wenigen Absätzen, Stichpunkten und Kapiteln.')),
+    pageHeader(t('Zusammenfassen'), t('Worum es in einem Video geht, in Absätzen, Stichpunkten und Kapiteln. Danach kannst du Fragen dazu stellen.')),
     parts.message,
     parts.setup,
     el('section', { class: 'card stack' },
@@ -593,15 +844,18 @@ function buildPage(root) {
     parts.sourceCard,
     parts.optionsCard,
     parts.resultCard,
+    parts.chatCard,
   );
+  renderChat();
   window.vitool.on('summary:progress', onProgress);
+  window.vitool.on('summary:chatProgress', onChatProgress);
   window.vitool.on('queue:update', onQueue);
 }
 
 export default {
   id: 'summary',
   label: t('Zusammenfassen'),
-  hint: t('Videos von einem Sprachmodell zusammenfassen lassen, auf deinem PC oder online.'),
+  hint: t('Videos von einem Sprachmodell zusammenfassen lassen und Fragen dazu stellen, auf deinem PC oder online.'),
   mount: buildPage,
   async onShow(data) {
     if (!state.status) await checkModels();

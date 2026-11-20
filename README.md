@@ -26,6 +26,8 @@
 - Audio only, single sections of a video, or whole playlists
 - Pick the audio language of videos with several, such as YouTube dubs, or download several languages
   at once into one MKV with every track labeled
+- Embed subtitles and chapters into the file, and skip sponsor segments, self-promotion and calls to subscribe
+  with [SponsorBlock](https://sponsor.ajay.app)
 - Paste many links at once or drop a text file with links to get a list to choose from
 - If yt-dlp doesn't know a site, Vitool finds the video on the page by itself, also on overview pages with many episodes,
   and saves the player's subtitles as SRT
@@ -53,6 +55,8 @@
 - **Green screen**: key out green or blue with a live preview. Vitool finds the color and a fitting
   tolerance by itself and removes the color fringe. Replace the background with a color, an image,
   a video, or keep it transparent as WebM or ProRes 4444
+- **Adjust**: rotate, flip, remove black borders, stabilize shaky footage and change the speed, all in one pass
+  with a live preview. Speed changes keep the pitch of voices
 
 ![Censoring with a rotated, pixelated field](docs/screenshots/censor.png)
 
@@ -100,12 +104,16 @@
 - Runs locally with [Ollama](https://ollama.com) and the model of your choice. Long videos are read in parts
 - Or use an online service with your own API key: OpenAI, Anthropic, Google Gemini, OpenRouter or any
   OpenAI-compatible service. Only the text is sent, never the video or sound, and the key is stored encrypted
-- Copy the result or save it as Markdown
+- **Ask questions about the video** in a chat: follow up, have something explained or discuss it. Answers point
+  to time stamps you can click to jump to that moment. For long videos the chat picks the matching passages
+- Copy the result or save it together with the chat as Markdown
 
 ![Summary of Tears of Steel with key points and chapters](docs/screenshots/summary.png)
 
 ### And also
-- Seven color themes with a subtle glass effect on Windows 11, English and German interface
+- Seven color themes with a subtle glass effect on Windows 11
+- Interface in English, German, Spanish, French, Portuguese (Brazil), Hindi, Japanese and Simplified Chinese
+- One preview volume for every player, remembered between sessions
 - Send a file from one area to the next, for example from Download to Cut
 - Continue in another area without saving in between: Vitool keeps a draft and only saves when you export
 - Updates from GitHub with one click in the settings
@@ -132,6 +140,7 @@ They bring their own Python, so you do not need to install anything else.
 Vitool processes all videos, audio and transcripts locally. It only goes online to download what you ask for,
 to set up its programs and add-ons, and to check for updates on GitHub. If you choose an online service for
 summaries, the text of the video (subtitles or transcript, title and description) is sent to that service.
+If you turn on SponsorBlock for a download, the video ID is sent to sponsor.ajay.app to look up its segments.
 
 ## Building from source
 

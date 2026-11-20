@@ -3,6 +3,7 @@
 import { el } from '../utils/dom.js';
 import { formatTime } from '../utils/time.js';
 import { frameButtons } from './video-controls.js';
+import { volumeControl } from '../utils/volume.js';
 import { t, LANGUAGE } from '../utils/i18n.js';
 
 const PREVIEW_HEIGHT = 380;
@@ -112,7 +113,7 @@ export class ChromaEditor {
     });
     this.timeLabel = el('span', { class: 'muted sync-time' });
     this.controlsRow = el('div', { class: 'marker-row chroma-controls', hidden: true },
-      this.playButton, this.seek, this.timeLabel, ...frameButtons(this.video));
+      this.playButton, this.seek, this.timeLabel, volumeControl(), ...frameButtons(this.video));
   }
 
   buildPanel() {

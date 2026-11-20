@@ -9,6 +9,7 @@ import { draftBadge } from '../components/draft-badge.js';
 import { manageCard } from '../components/manage-card.js';
 import { MediaPlayer } from '../components/media-player.js';
 import { SectionEditor } from '../components/section-editor.js';
+import { volumeControl } from '../utils/volume.js';
 import { t, formatNumber } from '../utils/i18n.js';
 
 const invoke = (...args) => window.vitool.invoke(...args);
@@ -606,7 +607,7 @@ function buildPage(root) {
     el('div', { class: 'option-row' },
       targetField,
       choice(t('Effekt'), [
-        { value: 'blur', text: 'Blur' },
+        { value: 'blur', text: t('Blur') },
         { value: 'pixel', text: t('Verpixeln') },
         { value: 'black', text: t('Schwarz') },
         { value: 'transparent', text: t('Freistellen') },
@@ -649,7 +650,7 @@ function buildPage(root) {
     ),
     // Das Video bleibt beim Scrollen stehen, damit die Regler sichtbar wirken.
     el('div', { class: 'ai-columns' },
-      el('section', { class: 'card stack ai-video' }, player.root, editor.root),
+      el('section', { class: 'card stack ai-video' }, player.root, el('div', { class: 'marker-row ai-volume' }, volumeControl()), editor.root),
       el('div', { class: 'stack ai-controls' }, parts.prepareCard, parts.clickCard, parts.exportCard),
     ),
   );
