@@ -379,7 +379,7 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
         : [];
       const start = fromLink ? 40 : 0;
       await runFfmpeg(tools.path('ffmpeg'), [
-        '-i', source, '-map', '0:v:0', ...audio,
+        '-i', source, '-map', media.videoMap, ...audio,
         // Über den relativen Namen entfallen die Sonderregeln für Windows-Pfade im Filter.
         '-vf', 'subtitles=untertitel.ass',
         '-c:v', 'libx264', '-preset', 'medium', '-crf', '18', ...bitrateCap(media.videoKbps), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output,

@@ -1,5 +1,32 @@
 [
   {
+    "version": "0.7.1",
+    "de": [
+      "Animierte AVIF-Dateien werden wieder vollständig verarbeitet. Bisher kam beim Umwandeln oder Bearbeiten nur ein ganz kurzer Clip mit einem einzigen Bild heraus."
+    ],
+    "en": [
+      "Animated AVIF files are processed in full again. Converting or editing one used to give a very short clip with a single frame."
+    ],
+    "es": [
+      "Los archivos AVIF animados vuelven a procesarse por completo. Antes, al convertirlos o editarlos solo salía un clip muy corto con una única imagen."
+    ],
+    "fr": [
+      "Les fichiers AVIF animés sont de nouveau traités en entier. Jusqu’ici, la conversion ou le montage ne donnait qu’un clip très court d’une seule image."
+    ],
+    "pt-BR": [
+      "Arquivos AVIF animados voltam a ser processados por inteiro. Antes, ao converter ou editar, saía só um clipe muito curto com uma única imagem."
+    ],
+    "hi": [
+      "एनिमेटेड AVIF फ़ाइलें अब फिर से पूरी तरह प्रोसेस होती हैं। पहले कन्वर्ट या एडिट करने पर सिर्फ़ एक तस्वीर वाली बहुत छोटी क्लिप बनती थी।"
+    ],
+    "ja": [
+      "アニメーション AVIF ファイルが再び最後まで処理されるようになりました。これまでは変換や編集をすると、1 枚だけのごく短いクリップになっていました。"
+    ],
+    "zh-CN": [
+      "动画 AVIF 文件重新可以完整处理。此前转换或编辑时只会得到只有一帧的极短片段。"
+    ]
+  },
+  {
     "version": "0.7.0",
     "de": [
       "Fragen zum Video: Unter der Zusammenfassung kannst du mit dem Video chatten, nachhaken und darüber diskutieren. Zeitmarken in den Antworten und Kapiteln springen per Klick an die Stelle. Bei langen Videos sucht der Chat die passenden Stellen heraus und sagt dir das auch.",

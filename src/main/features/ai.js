@@ -204,7 +204,7 @@ function register({ ipcMain, queue, store, tools, send }) {
 
     job.update({ detail: t('Bereitet Bilder vor'), progress: 0 });
     await runFfmpeg(tools.path('ffmpeg'), [
-      '-ss', start.toFixed(3), '-to', end.toFixed(3), '-i', media.path,
+      '-ss', start.toFixed(3), '-to', end.toFixed(3), '-i', media.path, '-map', media.videoMap,
       '-vf', `fps=${fps},scale=-2:'min(${MAX_FRAME_HEIGHT},ih)'`,
       '-q:v', '2', '-start_number', '0', path.join(frames, '%05d.jpg'),
     ], {
@@ -289,7 +289,7 @@ function register({ ipcMain, queue, store, tools, send }) {
         const output = path.join(temp, 'ergebnis.webm');
         await runFfmpeg(tools.path('ffmpeg'), [
           '-ss', start.toFixed(3), '-to', end.toFixed(3), '-i', media.path, ...masks,
-          '-filter_complex', `[0:v]fps=${fps},scale=${video.width}:${video.height},format=yuva420p[v];[1:v]${maskChain({ ...options, target: 'object' }, video)}[m];[v][m]alphamerge[out]`,
+          '-filter_complex', `[${media.videoMap}]fps=${fps},scale=${video.width}:${video.height},format=yuva420p[v];[1:v]${maskChain({ ...options, target: 'object' }, video)}[m];[v][m]alphamerge[out]`,
           '-map', '[out]', '-c:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0', '-pix_fmt', 'yuva420p', '-row-mt', '1', '-cpu-used', '4', '-an', output,
         ], {
           duration: end - start,
@@ -304,7 +304,7 @@ function register({ ipcMain, queue, store, tools, send }) {
         ? ['-map', '0:a:0', ...(['aac', 'mp3'].includes(media.audioCodec) ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', `${audioKbpsFor(media)}k`])]
         : [];
       const filter = [
-        `[0:v]fps=${fps},scale=${video.width}:${video.height},format=yuv420p,split[keep][src]`,
+        `[${media.videoMap}]fps=${fps},scale=${video.width}:${video.height},format=yuv420p,split[keep][src]`,
         `[src]${effectFilter({ effect: options.effect, strength: options.strength }, video)},format=yuva420p[fx]`,
         `[1:v]setpts=PTS+${start.toFixed(3)}/TB,${maskChain(options, video)}[m]`,
         '[fx][m]alphamerge[fg]',

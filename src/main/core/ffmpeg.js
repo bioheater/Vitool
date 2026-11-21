@@ -62,7 +62,10 @@ async function probeMedia(ffprobe, filePath) {
     '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', filePath,
   ]);
   const { format, streams } = JSON.parse(stdout);
-  const video = streams.find((stream) => stream.codec_type === 'video' && !stream.disposition?.attached_pic);
+  const videos = streams.filter((stream) => stream.codec_type === 'video' && !stream.disposition?.attached_pic);
+  // Animierte AVIF- und HEIF-Dateien haben vorne ein einzelnes Standbild und erst dahinter die Animation.
+  // Ohne diese Wahl würde aus einem Clip von einer Minute ein Video mit nur einem Bild.
+  const video = videos.find((stream) => Number(stream.nb_frames) !== 1) ?? videos[0];
   const audio = streams.find((stream) => stream.codec_type === 'audio');
   const duration = Number(format.duration);
   const audioBits = streams.filter((stream) => stream.codec_type === 'audio').reduce((sum, stream) => sum + streamBitRate(stream), 0);
@@ -80,6 +83,8 @@ async function probeMedia(ffprobe, filePath) {
     name: path.basename(filePath),
     duration,
     hasVideo: Boolean(video),
+    // Die Spur, die FFmpeg verarbeiten soll, etwa für "-map" oder als Eingang in einem Filter.
+    videoMap: video ? `0:${video.index}` : null,
     hasAudio: Boolean(audio),
     size: Number(format.size),
     width: (sideways ? video?.height : video?.width) ?? null,

@@ -28,7 +28,7 @@ function gifSteps(options, media, tempDir) {
     throw new UserError(t('Bitte wähle einen gültigen Abschnitt für das GIF.'));
   }
   const scale = width ? `,scale=${width}:-2:flags=lanczos` : '';
-  const filter = `fps=${fps}${scale},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4`;
+  const filter = `[${media.videoMap}]fps=${fps}${scale},split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4`;
   const output = path.join(tempDir, 'ergebnis.gif');
 
   return {
@@ -48,7 +48,7 @@ function frameSteps(options, media, tempDir) {
   return {
     output,
     fileName: `${path.parse(media.name).name} (${t('Standbild {time}', { time: secondsLabel(options.time) })}).${ext}`,
-    args: ['-ss', options.time.toFixed(3), '-i', media.path, '-frames:v', '1', ...quality, '-update', '1', output],
+    args: ['-ss', options.time.toFixed(3), '-i', media.path, '-map', media.videoMap, '-frames:v', '1', ...quality, '-update', '1', output],
     label: t('Speichert Standbild'),
   };
 }
@@ -92,7 +92,7 @@ async function subtitleSteps(options, media, tempDir, ffprobe) {
     output,
     fileName: `${path.parse(media.name).name} (${t('mit Untertiteln')}).mp4`,
     args: [
-      '-i', media.path, '-map', '0:v:0', ...audio,
+      '-i', media.path, '-map', media.videoMap, ...audio,
       // Über den relativen Namen entfallen die Sonderregeln für Windows-Pfade im Filter.
       '-vf', `subtitles=${localName}${encoding}${style}`,
       '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', ...bitrateCap(media.videoKbps), '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output,
@@ -182,7 +182,7 @@ async function adjustSteps(options, media, tempDir, ffmpeg) {
         label: t('Misst die Bewegung'),
         weight: 0.4,
         duration: media.duration,
-        args: ['-i', media.path, '-vf', [...before, `vidstabdetect=shakiness=${stabilize.shakiness}:accuracy=15:result=bewegung.trf`].join(','), '-an', '-f', 'null', '-'],
+        args: ['-i', media.path, '-map', media.videoMap, '-vf', [...before, `vidstabdetect=shakiness=${stabilize.shakiness}:accuracy=15:result=bewegung.trf`].join(','), '-an', '-f', 'null', '-'],
       });
       // "copy" gibt dem Filter eine eigene Kopie jedes Bildes. Ohne sie liest vidstabtransform in manchen
       // FFmpeg-Fassungen (etwa 8.1.1 von gyan.dev) Bilder, die der Decoder schon wiederverwendet:
@@ -204,7 +204,7 @@ async function adjustSteps(options, media, tempDir, ffmpeg) {
     weight: 1 - passes.reduce((sum, pass) => sum + pass.weight, 0),
     duration: media.duration / speed,
     args: [
-      '-i', media.path, '-map', '0:v:0', ...audio,
+      '-i', media.path, '-map', media.videoMap, ...audio,
       '-vf', filter,
       ...await videoEncoderArgs(ffmpeg, { sourceKbps: media.videoKbps }),
       '-movflags', '+faststart', output,
@@ -226,7 +226,7 @@ async function detectBars(ffmpeg, media) {
   let box = null;
   for (const time of points) {
     const { stderr } = await run(ffmpeg, [
-      '-hide_banner', '-nostdin', '-ss', time.toFixed(2), '-i', media.path,
+      '-hide_banner', '-nostdin', '-ss', time.toFixed(2), '-i', media.path, '-map', media.videoMap,
       '-vf', 'cropdetect=limit=24:round=2:reset=0', '-frames:v', '40', '-an', '-f', 'null', '-',
     ]).catch((error) => ({ stderr: error?.message ?? '' }));
     const matches = [...String(stderr).matchAll(/crop=(\d+):(\d+):(\d+):(\d+)/g)];

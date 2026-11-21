@@ -192,12 +192,12 @@ function fieldArea(field, video) {
 }
 
 // Liefert den Filter und, für Felder mit wechselnder Stärke, die Befehlsdateien dazu.
-function buildFilter(fields, video, mask, fps) {
+function buildFilter(fields, video, mask, fps, input) {
   const count = fields.length;
   const labels = fields.map((_field, index) => `[s${index}]`).join('');
   const commands = [];
   const chain = [
-    `[0:v]fps=${fps},scale=${video.width}:${video.height},format=yuv420p[base0]`,
+    `[${input}]fps=${fps},scale=${video.width}:${video.height},format=yuv420p[base0]`,
     count > 1 ? `[1:v]split=${count}${labels}` : '[1:v]null[s0]',
   ];
 
@@ -266,7 +266,7 @@ function register({ ipcMain, queue, tools }) {
 
     try {
       const encoder = await videoEncoderArgs(tools.path('ffmpeg'), { sourceKbps: media.videoKbps });
-      const { filter, commands } = buildFilter(fields, video, mask, fps);
+      const { filter, commands } = buildFilter(fields, video, mask, fps, media.videoMap);
       for (const { file, content } of commands) await fs.writeFile(path.join(tempDir, file), content, 'utf8');
       await runFfmpeg(tools.path('ffmpeg'), [
         '-i', media.path,

@@ -25,11 +25,11 @@ function sectionArgs({ start, end }, options, media, output, encoder) {
   const range = ['-ss', start.toFixed(3), '-to', end.toFixed(3), '-i', media.path];
 
   if (options.mode === 'fast') {
-    return [...range, '-map', '0:v:0?', '-map', '0:a?', '-c', 'copy', '-avoid_negative_ts', 'make_zero', output];
+    return [...range, '-map', media.videoMap ?? '0:v:0?', '-map', '0:a?', '-c', 'copy', '-avoid_negative_ts', 'make_zero', output];
   }
   const audio = media.hasAudio ? ['-map', '0:a:0', '-c:a', 'aac', '-b:a', `${audioKbpsFor(media)}k`] : [];
   const video = media.hasVideo
-    ? ['-map', '0:v:0', ...encoder]
+    ? ['-map', media.videoMap, ...encoder]
     : [];
   return [...range, ...video, ...audio, output];
 }

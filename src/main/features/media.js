@@ -20,7 +20,7 @@ function register({ ipcMain, queue, tools }) {
     job.update({ detail: t('Erstellt Vorschau') });
     await runFfmpeg(tools.path('ffmpeg'), [
       '-i', media.path,
-      '-map', '0:v:0', '-map', '0:a:0?',
+      '-map', media.videoMap, '-map', '0:a:0?',
       '-vf', 'scale=-2:2*trunc(min(480\\,ih)/2)',
       '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '30', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '96k', '-movflags', '+faststart', output,

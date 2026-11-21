@@ -173,7 +173,7 @@ function register({ ipcMain, queue, tools }) {
     const video = plan.encodeVideo ? [...videoFilters(plan), ...videoCodecArgs(plan)] : ['-c:v', 'copy'];
     const audioMap = plan.copyAudio ? ['-map', '0:a?'] : ['-map', '0:a:0?'];
     return runFfmpeg(ffmpeg(), [
-      '-i', media.path, '-map', '0:v:0', ...audioMap, ...video, ...audioCodecArgs(plan, media), ...containerArgs(plan), output,
+      '-i', media.path, '-map', media.videoMap, ...audioMap, ...video, ...audioCodecArgs(plan, media), ...containerArgs(plan), output,
     ], {
       duration: media.duration,
       signal: job.signal,
@@ -183,7 +183,7 @@ function register({ ipcMain, queue, tools }) {
 
   // Zwei Durchgänge: Der erste misst das Video, der zweite verteilt die Bitrate passend.
   async function runTwoPass(media, plan, output, tempDir, job, note) {
-    const common = ['-i', media.path, '-map', '0:v:0', ...videoFilters(plan), ...videoCodecArgs(plan)];
+    const common = ['-i', media.path, '-map', media.videoMap, ...videoFilters(plan), ...videoCodecArgs(plan)];
     const logFile = path.join(tempDir, 'pass');
     const options = (start, label) => ({
       duration: media.duration,

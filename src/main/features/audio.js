@@ -310,11 +310,11 @@ function register({ ipcMain, queue, tools, send }) {
       const graph = audioGraph(options, info, sections, [...(loudnorm ? [loudnorm] : []), `aresample=${rate}`]);
       if (plan.video && sections) {
         const fps = `${info.frameRate.num}/${info.frameRate.den}`;
-        graph.unshift(`[0:v:0]setpts=PTS-STARTPTS,fps=${fps},select='${selectExpression(sections, (0.5 * info.frameRate.den) / info.frameRate.num)}',setpts=N/FRAME_RATE/TB[v]`);
+        graph.unshift(`[${media.videoMap}]setpts=PTS-STARTPTS,fps=${fps},select='${selectExpression(sections, (0.5 * info.frameRate.den) / info.frameRate.num)}',setpts=N/FRAME_RATE/TB[v]`);
       }
       await fs.writeFile(path.join(tempDir, 'filter.txt'), graph.join(';\n'), 'utf8');
 
-      const videoMap = !plan.video ? [] : sections ? ['-map', '[v]'] : ['-map', '0:v:0'];
+      const videoMap = !plan.video ? [] : sections ? ['-map', '[v]'] : ['-map', media.videoMap];
       const videoCodec = !plan.video ? [] : plan.video === 'copy' ? ['-c:v', 'copy'] : await videoEncoderArgs(ffmpeg, { sourceKbps: media.videoKbps });
       const output = path.join(tempDir, `ergebnis${plan.ext}`);
       const edited = hasEdits(options);

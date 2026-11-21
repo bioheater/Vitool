@@ -58,11 +58,11 @@ function transparentAudio(format, media) {
   return ['-c:a', 'libopus', '-b:a', `${audioKbpsFor(media, format.opusCeiling)}k`];
 }
 
-function buildGraph(options, size, fps, backgroundIsImage) {
+function buildGraph(options, size, fps, backgroundIsImage, input) {
   const { u, v, blue } = keyUv(options.color);
   const lines = [];
   const key = [
-    '[0:v]format=rgb24',
+    `[${input}]format=rgb24`,
     'scale=out_color_matrix=bt601:out_range=tv',
     'format=yuva444p',
     `chromakey=color=0x80${toHex(u)}${toHex(v)}:yuv=1:similarity=${options.similarity.toFixed(4)}:blend=${options.blend.toFixed(4)}`,
@@ -99,7 +99,7 @@ function register({ ipcMain, queue, tools }) {
         // Bilder laufen als Standbild mit, Videos wiederholen sich, falls sie kürzer sind.
         inputs.push(...(backgroundIsImage ? ['-loop', '1', '-framerate', String(fps)] : ['-stream_loop', '-1']), '-i', options.backgroundPath);
       }
-      await fs.writeFile(path.join(tempDir, 'filter.txt'), buildGraph(options, size, fps, backgroundIsImage).join(';\n'), 'utf8');
+      await fs.writeFile(path.join(tempDir, 'filter.txt'), buildGraph(options, size, fps, backgroundIsImage, media.videoMap).join(';\n'), 'utf8');
 
       const transparent = options.background === 'transparent' ? TRANSPARENT_FORMATS[options.transparentFormat] : null;
       const audio = !media.hasAudio ? []
