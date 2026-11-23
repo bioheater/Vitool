@@ -30,7 +30,7 @@
   with [SponsorBlock](https://sponsor.ajay.app)
 - Paste many links at once or drop a text file with links to get a list to choose from
 - If yt-dlp doesn't know a site, Vitool finds the video on the page by itself, also on overview pages with many episodes,
-  and saves the player's subtitles as SRT
+  and saves the player's subtitles as SRT. Ads on these pages are blocked, so banners don't cover the player
 - yt-dlp keeps itself up to date, and an optional YouTube sign-in helps with age-restricted or private videos
 - Download history with quick access to your files
 
@@ -141,6 +141,8 @@ Vitool processes all videos, audio and transcripts locally. It only goes online 
 to set up its programs and add-ons, and to check for updates on GitHub. If you choose an online service for
 summaries, the text of the video (subtitles or transcript, title and description) is sent to that service.
 If you turn on SponsorBlock for a download, the video ID is sent to sponsor.ajay.app to look up its segments.
+When Vitool opens a page to find a video on it, it blocks ads there. The ad filter lists come from the
+[Ghostery adblocker](https://github.com/ghostery/adblocker) on GitHub and are refreshed at most once a week.
 
 ## Building from source
 

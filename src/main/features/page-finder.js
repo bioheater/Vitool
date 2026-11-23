@@ -1,7 +1,10 @@
 // Sucht Videos auf Seiten, die yt-dlp nicht kennt. Vitool öffnet die Seite und merkt sich die Videoadressen,
 // die der Player beim Abspielen lädt. Das geht sichtbar, dann startet man das Video selbst, oder unsichtbar:
 // Dann startet Vitool es stumm und schließt die Seite wieder, sobald der Stream gefunden ist.
-const { BrowserWindow, session } = require('electron');
+const fs = require('fs/promises');
+const path = require('path');
+const { app, BrowserWindow, session } = require('electron');
+const { ElectronBlocker } = require('@ghostery/adblocker-electron');
 const { CanceledError } = require('../core/process-runner');
 const { t } = require('../core/i18n');
 const { plainUserAgent } = require('../core/sign-in');
@@ -31,6 +34,10 @@ const NO_PLAYER_MS = 5000;
 const SETTLE_MS = 2500;
 const POLL_MS = 1000;
 const MIN_GROUP = 3;
+// Kleinere Videodateien sind Platzhalter: leere Clips zum Testen von Autoplay oder anstelle blockierter Werbung.
+const SMALL_FILE_BYTES = 1024 * 1024;
+// So oft drückt die Suche höchstens auf einen Play-Knopf, etwa noch einmal nach so einem Platzhalter.
+const MAX_PRESSES = 3;
 
 function headerValue(headers, name) {
   const key = Object.keys(headers ?? {}).find((entry) => entry.toLowerCase() === name.toLowerCase());
@@ -64,6 +71,17 @@ function classify({ url, resourceType, responseHeaders }) {
   return videoFile && resourceType === 'media' ? 'file' : null;
 }
 
+// Gesamtgröße einer Datei. Bei Teilabrufen steht sie hinter dem Schrägstrich in Content-Range.
+function fileSize(headers) {
+  const range = /\/(\d+)\s*$/.exec(String(headerValue(headers, 'content-range') ?? ''));
+  const size = Number(range?.[1] ?? headerValue(headers, 'content-length'));
+  return Number.isFinite(size) && size > 0 ? size : null;
+}
+
+function isPlaceholder(item) {
+  return ADS.test(item.url) || (item.kind === 'file' && item.size !== null && item.size < SMALL_FILE_BYTES);
+}
+
 function isSubtitle({ url, responseHeaders }) {
   if (!/^https?:/i.test(url)) return false;
   return /\.(vtt|srt)$/.test(pathOf(url)) || SUBTITLE_TYPES.includes(contentType(responseHeaders));
@@ -86,23 +104,26 @@ function cleanTitle(title) {
   return first.length >= 3 ? first : text;
 }
 
-// Der eigentliche Film ist meist ein Stream. Werbung kommt oft zuerst, deshalb fallen bekannte Werbeadressen weg.
+// Der eigentliche Film ist meist ein Stream. Werbung und Platzhalter kommen oft zuerst, deshalb fallen sie weg.
 function pickBest(found) {
-  const usable = found.filter((item) => !ADS.test(item.url));
+  const usable = found.filter((item) => !isPlaceholder(item));
   return [...(usable.length ? usable : found)].sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.id - b.id)[0] ?? null;
 }
 
-// Startet in jedem Rahmen der Seite die Videos stumm. Gibt es noch keins, drückt es einmal auf einen Play-Knopf.
+// Startet in jedem Rahmen der Seite die Videos stumm. Läuft keins, drückt es auf einen Play-Knopf, sichtbare zuerst.
+// Zu Ende gespielte Videos bleiben stehen: Oft war das nur ein Platzhalter und danach wartet der Player auf einen Klick.
 const START_PLAYER = `(() => {
   const media = [...document.querySelectorAll('video, audio')];
   media.forEach((element) => {
     element.muted = true;
-    if (element.paused) element.play().catch(() => {});
+    if (element.paused && !element.ended) element.play().catch(() => {});
   });
-  const buttons = document.querySelectorAll('.vjs-big-play-button, .plyr__control--overlaid, .mejs__overlay-button, .jw-display-icon-container, .ytp-large-play-button, [class*="play-button" i], [class*="playbutton" i], [class*="play-btn" i], button[aria-label*="play" i], [title="Play" i]');
-  if (!window.__vitoolPressed && buttons.length && media.every((element) => element.paused)) {
-    window.__vitoolPressed = true;
-    buttons[0].click();
+  const buttons = [...document.querySelectorAll('.vjs-big-play-button, .plyr__control--overlaid, .mejs__overlay-button, .jw-display-icon-container, .ytp-large-play-button, [class*="play-button" i], [class*="playbutton" i], [class*="play-btn" i], button[aria-label*="play" i], [title="Play" i]')];
+  const shown = buttons.filter((button) => button.getClientRects().length > 0);
+  const presses = window.__vitoolPresses || 0;
+  if (presses < ${MAX_PRESSES} && buttons.length && media.every((element) => element.paused || element.ended)) {
+    window.__vitoolPresses = presses + 1;
+    (shown[0] || buttons[0]).click();
   }
   return media.length + buttons.length;
 })()`;
@@ -173,6 +194,29 @@ function groupLinks(links, pageUrl) {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Werbebanner legen sich gern über den Player und lassen sich oft nicht wegklicken. Ein Werbefilter
+// (EasyList und Co. über Ghostery) blockiert Werbeserver und blendet Banner auf der Seite aus. Nur
+// Werbung, keine Tracker: Manche Player laufen ohne ihre Statistik-Skripte nicht mehr.
+// Die Listen kommen beim ersten Öffnen einer Seite und werden eine Woche lang wiederverwendet.
+const FILTER_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+// Ohne Netz oder bei einem Fehler wartet die Seite nicht länger als hier und lädt dann ohne Filter.
+const FILTER_WAIT_MS = 8000;
+
+async function loadBlocker() {
+  const cacheFile = path.join(app.getPath('userData'), 'werbefilter.bin');
+  try {
+    const { mtimeMs } = await fs.stat(cacheFile);
+    if (Date.now() - mtimeMs > FILTER_MAX_AGE_MS) await fs.rm(cacheFile, { force: true });
+  } catch {
+    // Noch keine Listen gespeichert.
+  }
+  return ElectronBlocker.fromPrebuiltAdsOnly(fetch, {
+    path: cacheFile,
+    read: fs.readFile,
+    write: fs.writeFile,
+  });
+}
+
 function createPageFinder({ send }) {
   const pageSession = session.fromPartition(PARTITION);
   const userAgent = plainUserAgent(pageSession.getUserAgent());
@@ -186,11 +230,31 @@ function createPageFinder({ send }) {
   pageSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   pageSession.on('will-download', (event) => event.preventDefault());
 
+  // Startet den Werbefilter einmal für alle Seiten. Klappt es nicht, etwa ohne Netz, versucht es die nächste Seite erneut.
+  let blocking = null;
+  function adBlockReady() {
+    blocking ??= loadBlocker().then((blocker) => {
+      blocker.enableBlockingInSession(pageSession);
+      return true;
+    }).catch(() => {
+      blocking = null;
+      return false;
+    });
+    return Promise.race([blocking, wait(FILTER_WAIT_MS).then(() => false)]);
+  }
+
+  // Lädt die Seite erst, wenn der Werbefilter bereit ist, sonst rutscht die Werbung beim ersten Mal durch.
+  function load(target, url) {
+    adBlockReady().then(() => {
+      if (!target.isDestroyed()) target.loadURL(url).catch(() => {});
+    });
+  }
+
   const report = () => send('download:pageMedia', {
     open: Boolean(win),
     title: win ? win.webContents.getTitle() : '',
     items: [...(visible?.found ?? [])]
-      .sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.id - b.id)
+      .sort((a, b) => isPlaceholder(a) - isPlaceholder(b) || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.id - b.id)
       .map(({ id, kind, host, name }) => ({ id, kind, host, name })),
   });
 
@@ -209,7 +273,9 @@ function createPageFinder({ send }) {
     }
     const kind = classify(details);
     if (!kind || page.found.some((item) => item.url === details.url)) return;
-    page.found.push({ id: page.found.length + 1, url: details.url, kind, headers, ...describe(details.url) });
+    page.found.push({
+      id: page.found.length + 1, url: details.url, kind, headers, size: fileSize(details.responseHeaders), ...describe(details.url),
+    });
     page.onChange?.();
   });
 
@@ -239,7 +305,7 @@ function createPageFinder({ send }) {
     visible = { url, found: [], subtitles: [], onChange: report };
     if (win) {
       pages.set(win.webContents.id, visible);
-      win.loadURL(url);
+      load(win, url);
       win.focus();
       report();
       return;
@@ -268,7 +334,7 @@ function createPageFinder({ send }) {
     });
     // Schließt jemand Vitool, darf das Suchfenster das Programm nicht im Hintergrund weiterlaufen lassen.
     owner?.once('closed', close);
-    win.loadURL(url);
+    load(win, url);
     report();
   }
 
@@ -318,6 +384,8 @@ function createPageFinder({ send }) {
       loadedAt ??= Date.now();
     });
     try {
+      await adBlockReady();
+      if (hidden.isDestroyed()) throw new CanceledError();
       contents.loadURL(url).catch(() => {});
       const started = Date.now();
       let foundAt = null;
@@ -326,7 +394,8 @@ function createPageFinder({ send }) {
         await wait(POLL_MS);
         if (signal?.aborted || hidden.isDestroyed()) throw new CanceledError();
         const now = Date.now();
-        if (page.found.length) {
+        // Nur Platzhalter gefunden: weitersuchen und den Player noch einmal anstoßen.
+        if (page.found.some((item) => !isPlaceholder(item))) {
           foundAt ??= now;
           if (now - foundAt >= SETTLE_MS) break;
           continue;

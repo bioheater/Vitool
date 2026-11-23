@@ -49,6 +49,7 @@ These components keep their own licenses. Vitool does not relicense them.
 | [Electron](https://github.com/electron/electron) | MIT |
 | [hls.js](https://github.com/video-dev/hls.js) | Apache-2.0 |
 | [electron-updater](https://github.com/electron-userland/electron-builder) | MIT |
+| [Ghostery adblocker](https://github.com/ghostery/adblocker) | MPL-2.0 |
 
 ### Downloaded on request into Vitool's data folder
 
