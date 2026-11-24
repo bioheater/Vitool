@@ -453,18 +453,34 @@ function languageLabel(language) {
 
 // Zusätze: Untertitel und Kapitel in die Datei, Werbung über SponsorBlock überspringen.
 // Jede Zeile erscheint nur, wenn das Video sie hergibt. Die Häkchen merkt sich Vitool.
+// Untertitel von einer Seite: der Name aus dem Player, sonst die Sprache, sonst der Dateiname.
+function trackLabel(track) {
+  if (track.auto) return `${languageName(track)} (${t('automatisch erkannt')})`;
+  if (!Number.isInteger(track.page)) return languageName(track);
+  // Ein Kürzel wie "de" oder "ger_full" sagt weniger als der Name der Sprache.
+  const codeLike = /^[a-z]{2,3}([_-][a-z0-9]+)*$/i.test(track.label ?? '');
+  if (track.label && !(codeLike && track.code !== 'und')) return track.label;
+  return track.code !== 'und' ? languageName({ code: track.code }) : track.name || t('Untertitel');
+}
+
 function renderExtras(info) {
   const tracks = info.subtitleTracks ?? [];
-  // Alphabetisch nach dem angezeigten Namen, der Wert bleibt die Stelle in der Liste von yt-dlp.
-  const labeled = tracks.map((track, index) => ({
-    index,
-    label: track.auto ? `${languageName(track)} (${t('automatisch erkannt')})` : languageName(track),
-  })).sort((a, b) => a.label.localeCompare(b.label, LANGUAGE));
+  // Alphabetisch nach dem angezeigten Namen, der Wert bleibt die Stelle in der Liste.
+  // Gleiche Namen bekommen eine Nummer, damit man sie auseinanderhalten kann.
+  const seen = new Map();
+  const labeled = tracks.map((track, index) => {
+    const base = trackLabel(track);
+    const count = (seen.get(base) ?? 0) + 1;
+    seen.set(base, count);
+    return { index, label: count > 1 ? `${base} (${count})` : base };
+  }).sort((a, b) => a.label.localeCompare(b.label, LANGUAGE));
   parts.subtitleSelect.replaceChildren(...labeled.map(({ index, label }) => el('option', { value: String(index) }, label)));
   // Vorgewählt: Untertitel in der Sprache der Oberfläche, sonst die ersten von Hand erstellten.
   const own = tracks.findIndex((track) => track.code.split('-')[0] === LANGUAGE);
   const manual = tracks.findIndex((track) => !track.auto);
   parts.subtitleSelect.value = String(own >= 0 ? own : Math.max(0, manual));
+  // Bringt eine Seite Untertitel mit, sind sie vorgewählt. Sonst gilt das gemerkte Häkchen.
+  parts.subtitleToggle.checked = tracks.some((track) => Number.isInteger(track.page)) || Boolean(state.settings.downloadSubtitles);
   parts.chapterCount.textContent = info.chapterCount ? t('{count} Kapitel', { count: info.chapterCount }) : '';
   renderExtraState();
 }
@@ -487,7 +503,9 @@ function chosenExtras() {
   const audio = state.mode === 'audio';
   const track = (info.subtitleTracks ?? [])[Number(parts.subtitleSelect.value)];
   return {
-    subtitle: !audio && !parts.subtitleRow.hidden && parts.subtitleToggle.checked && track ? { code: track.code, auto: track.auto } : null,
+    subtitle: !audio && !parts.subtitleRow.hidden && parts.subtitleToggle.checked && track
+      ? { code: track.code, auto: Boolean(track.auto), ...(Number.isInteger(track.page) ? { page: track.page } : {}) }
+      : null,
     chapters: !parts.chapterRow.hidden && parts.chapterToggle.checked,
     sponsorBlock: !parts.sponsorRow.hidden && parts.sponsorToggle.checked,
   };

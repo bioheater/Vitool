@@ -1,5 +1,48 @@
 [
   {
+    "version": "0.7.2",
+    "de": [
+      "Untertitel von Seiten, die yt-dlp nicht kennt, lassen sich jetzt auswählen und direkt in die Datei einbetten. Vitool findet sie auch in den Einstellungen des Players, wenn der Player sie noch gar nicht geladen hat.",
+      "Im Seitenfenster blockiert Vitool Werbung, damit keine Banner mehr über dem Video liegen.",
+      "Die automatische Suche überspringt kurze Platzhalter-Clips ohne Bild und nimmt das eigentliche Video."
+    ],
+    "en": [
+      "Subtitles from sites yt-dlp doesn’t know can now be picked and embedded right into the file. Vitool also finds them in the player’s settings, even before the player has loaded them.",
+      "The page window blocks ads, so banners no longer cover the video.",
+      "The automatic search skips short placeholder clips without a picture and takes the actual video."
+    ],
+    "es": [
+      "Los subtítulos de sitios que yt-dlp no conoce ahora se pueden elegir e incrustar directamente en el archivo. Vitool también los encuentra en la configuración del reproductor, aunque este aún no los haya cargado.",
+      "La ventana de la página bloquea los anuncios, así que ya no tapan el vídeo.",
+      "La búsqueda automática se salta los clips de relleno cortos sin imagen y toma el vídeo real."
+    ],
+    "fr": [
+      "Les sous-titres des sites que yt-dlp ne connaît pas peuvent maintenant être choisis et intégrés directement dans le fichier. Vitool les trouve aussi dans les réglages du lecteur, même avant que celui-ci ne les charge.",
+      "La fenêtre de la page bloque les publicités, les bannières ne couvrent plus la vidéo.",
+      "La recherche automatique ignore les courts clips de remplissage sans image et prend la vraie vidéo."
+    ],
+    "pt-BR": [
+      "Legendas de sites que o yt-dlp não conhece agora podem ser escolhidas e incorporadas direto no arquivo. O Vitool também as encontra nas configurações do player, mesmo antes de o player carregá-las.",
+      "A janela da página bloqueia anúncios, então os banners não cobrem mais o vídeo.",
+      "A busca automática pula clipes curtos de espera sem imagem e pega o vídeo de verdade."
+    ],
+    "hi": [
+      "जिन साइटों को yt-dlp नहीं जानता, उनके सबटाइटल अब चुनकर सीधे फ़ाइल में जोड़े जा सकते हैं। Vitool उन्हें प्लेयर की सेटिंग में भी ढूँढ लेता है, भले ही प्लेयर ने उन्हें अभी लोड न किया हो।",
+      "पेज विंडो अब विज्ञापन ब्लॉक करती है, इसलिए बैनर वीडियो को नहीं ढकते।",
+      "ऑटोमैटिक खोज बिना तस्वीर वाली छोटी प्लेसहोल्डर क्लिप छोड़ देती है और असली वीडियो लेती है।"
+    ],
+    "ja": [
+      "yt-dlp が対応していないサイトの字幕を選んで、そのままファイルに埋め込めるようになりました。プレーヤーがまだ読み込んでいない字幕も、プレーヤーの設定から見つけます。",
+      "ページウィンドウで広告をブロックするので、バナーが動画を覆わなくなりました。",
+      "自動検索は映像のない短いプレースホルダー動画を飛ばし、本来の動画を選びます。"
+    ],
+    "zh-CN": [
+      "现在可以选择 yt-dlp 不支持的网站上的字幕，并直接嵌入文件。即使播放器还没有加载字幕，Vitool 也能在播放器的设置中找到它们。",
+      "页面窗口会拦截广告，横幅不再遮挡视频。",
+      "自动搜索会跳过没有画面的短占位片段，选取真正的视频。"
+    ]
+  },
+  {
     "version": "0.7.1",
     "de": [
       "Animierte AVIF-Dateien werden wieder vollständig verarbeitet. Bisher kam beim Umwandeln oder Bearbeiten nur ein ganz kurzer Clip mit einem einzigen Bild heraus."

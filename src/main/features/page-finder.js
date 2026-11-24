@@ -21,7 +21,14 @@ const CONTENT_TYPES = {
   'video/webm': 'file',
   'video/quicktime': 'file',
 };
-const SUBTITLE_TYPES = ['text/vtt', 'application/x-subrip', 'text/srt'];
+const SUBTITLE_TYPES = ['text/vtt', 'application/x-subrip', 'text/srt', 'text/x-ssa', 'text/x-ass'];
+// Sprachkürzel, wie sie oft im Namen einer Untertiteldatei stehen, etwa "folge-3_ger.ass" oder "/subs/en/".
+const LANGUAGE_TOKENS = {
+  de: ['de', 'ger', 'deu', 'german', 'deutsch'], en: ['en', 'eng', 'english'], ja: ['ja', 'jp', 'jpn', 'japanese'],
+  es: ['es', 'spa', 'spanish'], fr: ['fr', 'fre', 'fra', 'french'], it: ['ita', 'italian'], pt: ['pt', 'por', 'portuguese'],
+  ru: ['ru', 'rus', 'russian'], tr: ['tr', 'tur', 'turkish'], ko: ['ko', 'kor', 'korean'], zh: ['zh', 'chi', 'zho', 'chinese'],
+  ar: ['ar', 'ara', 'arabic'], hi: ['hi', 'hin', 'hindi'], pl: ['pl', 'pol', 'polish'],
+};
 const KIND_ORDER = { hls: 0, dash: 1, file: 2 };
 const FORWARDED_HEADERS = ['Referer', 'Origin'];
 const ADS = /doubleclick|googlesyndication|imasdk|adservice|\/ads?\//i;
@@ -84,8 +91,40 @@ function isPlaceholder(item) {
 
 function isSubtitle({ url, responseHeaders }) {
   if (!/^https?:/i.test(url)) return false;
-  return /\.(vtt|srt)$/.test(pathOf(url)) || SUBTITLE_TYPES.includes(contentType(responseHeaders));
+  return /\.(vtt|srt|ass|ssa)$/.test(pathOf(url)) || SUBTITLE_TYPES.includes(contentType(responseHeaders));
 }
+
+function guessLanguage(text) {
+  const tokens = String(text ?? '').toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  return Object.keys(LANGUAGE_TOKENS).find((code) => LANGUAGE_TOKENS[code].some((token) => tokens.includes(token))) ?? null;
+}
+
+function addSubtitle(page, { url, headers = {}, language = null, label = null }) {
+  if (!/^https?:/i.test(url ?? '')) return;
+  const known = page.subtitles.find((item) => item.url === url);
+  if (known) {
+    known.language ??= language || guessLanguage(label);
+    known.label ??= label;
+    return;
+  }
+  page.subtitles.push({ url, headers, language: language || guessLanguage(label) || guessLanguage(pathOf(url)), label: label || null });
+}
+
+// Untertitel, die im Player hinterlegt sind, aber erst beim Einschalten geladen würden: als <track> im Video
+// oder als Adresse in den Einstellungen des Players im Quelltext. Playerjs etwa schreibt "[Deutsch]https://….vtt",
+// der Name in Klammern dient dann als Bezeichnung.
+const READ_TRACKS = `(() => {
+  const tracks = [...document.querySelectorAll('track[src]')]
+    .filter((track) => !track.kind || ['subtitles', 'captions'].includes(track.kind))
+    .map((track) => ({ url: track.src, language: track.srclang || null, label: track.label || null }));
+  const html = document.documentElement.outerHTML.replace(/\\\\\\//g, '/');
+  const pattern = /(?:\\[([^\\]\\r\\n]{1,40})\\])?(https?:\\/\\/[^"'\\s<>\\\\,]+?\\.(?:vtt|srt|ass|ssa)(?:\\?[^"'\\s<>\\\\,]*)?)(?=["'\\s<>\\\\,]|$)/gi;
+  for (const match of html.matchAll(pattern)) {
+    if (tracks.length >= 12) break;
+    tracks.push({ url: match[2].replace(/&amp;/g, '&'), language: null, label: match[1] || null });
+  }
+  return tracks;
+})()`;
 
 function describe(url) {
   try {
@@ -268,7 +307,7 @@ function createPageFinder({ send }) {
     const page = pages.get(details.webContentsId);
     if (!page || details.statusCode >= 400) return;
     if (isSubtitle(details)) {
-      if (!page.subtitles.some((item) => item.url === details.url)) page.subtitles.push({ url: details.url, headers });
+      addSubtitle(page, { url: details.url, headers });
       return;
     }
     const kind = classify(details);
@@ -297,7 +336,9 @@ function createPageFinder({ send }) {
       return headers;
     };
     const subtitles = [];
-    for (const entry of page.subtitles) subtitles.push({ url: entry.url, headers: await withCookies(entry) });
+    for (const entry of page.subtitles) {
+      subtitles.push({ url: entry.url, headers: await withCookies(entry), language: entry.language, label: entry.label });
+    }
     return { url: item.url, headers: await withCookies(item), title: cleanTitle(title), pageUrl: page.url, subtitles };
   }
 
@@ -341,11 +382,18 @@ function createPageFinder({ send }) {
   async function take(id) {
     const item = visible?.found.find((entry) => entry.id === id);
     if (!item) return null;
+    if (win) await readTracks(win.webContents, visible);
     return sourceFor(item, visible, win ? win.webContents.getTitle() : '');
   }
 
   function close() {
     win?.close();
+  }
+
+  async function readTracks(contents, page) {
+    const frames = contents.mainFrame?.framesInSubtree ?? [];
+    const lists = await Promise.all(frames.map((frame) => frame.executeJavaScript(READ_TRACKS).catch(() => [])));
+    lists.flat().forEach((track) => addSubtitle(page, track));
   }
 
   async function inAllFrames(contents, code) {
@@ -407,6 +455,7 @@ function createPageFinder({ send }) {
       }
       if (hidden.isDestroyed()) throw new CanceledError();
       const title = contents.getTitle();
+      await readTracks(contents, page);
       const best = pickBest(page.found);
       const source = best ? await sourceFor(best, page, title) : null;
       const pageLinks = links ? groupLinks(await contents.executeJavaScript(READ_LINKS).catch(() => []), contents.getURL() || url) : [];

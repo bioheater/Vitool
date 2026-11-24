@@ -166,6 +166,27 @@ function subtitleTracks(info) {
   return tracks;
 }
 
+function subtitleFormat(text) {
+  if (/^﻿?\s*WEBVTT/.test(text)) return 'vtt';
+  return /^﻿?\s*\[Script Info\]/i.test(text) ? 'ass' : 'srt';
+}
+
+// Untertitel, die Vitool auf einer Seite gefunden hat. "page" ist die Stelle in der Liste, damit beim Download
+// genau diese Datei geladen wird. Ohne Sprache und Namen hilft der Dateiname beim Unterscheiden.
+function pageSubtitleTracks(subtitles) {
+  return (subtitles ?? []).map((item, index) => {
+    let name = null;
+    try {
+      name = decodeURIComponent(new URL(item.url).pathname.split('/').filter(Boolean).pop() ?? '') || null;
+    } catch {
+      // Unlesbare Adresse: dann bleibt es bei der Sprache.
+    }
+    // Playerjs und andere kennzeichnen maschinell erstellte Untertitel etwa als "[jp_auto]".
+    const auto = /(^|[^a-z])auto([^a-z]|$)/i.test(item.label ?? '');
+    return { code: item.language || 'und', label: auto ? null : item.label || null, name, page: index, auto };
+  });
+}
+
 const UNAVAILABLE_TITLES = ['[Private video]', '[Deleted video]', '[Unavailable video]'];
 
 // Manche Seiten liefern in der schnellen Liste keine Titel. Dann hilft der lesbare Teil des Links.
@@ -271,12 +292,14 @@ const SUBTITLE_CODE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]+)*$/;
 // Zusätze beim Download. Bei Abschnitten passen Untertitel, Kapitel und SponsorBlock nicht zur Zeit,
 // dort bleiben sie weg.
 function extraArgs(options, hasSections) {
-  if (hasSections || options.pageUrl) return [];
+  if (hasSections) return [];
   const args = [];
   if (options.sponsorBlock) args.push('--sponsorblock-remove', SPONSOR_CATEGORIES);
   if (options.chapters) args.push('--embed-chapters');
   const subtitle = options.subtitle;
-  if (options.mode !== 'audio' && subtitle && SUBTITLE_CODE.test(subtitle.code ?? '')) {
+  // Untertitel von der Seite selbst bettet Vitool nach dem Download ein. Die übrigen kennt yt-dlp,
+  // bei einem Stream von einer Seite etwa die Untertitelspuren in seiner Playlist.
+  if (options.mode !== 'audio' && subtitle && !Number.isInteger(subtitle.page) && SUBTITLE_CODE.test(subtitle.code ?? '')) {
     args.push(subtitle.auto ? '--write-auto-subs' : '--write-subs', '--sub-langs', subtitle.code, '--embed-subs');
   }
   return args;
@@ -422,6 +445,7 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
   }
 
   // Untertitel, die der Player geladen hat, landen als SRT neben dem Video. Klappt die Umwandlung nicht, bleibt es VTT.
+  // ASS bleibt ASS, sonst ginge die Gestaltung verloren.
   async function saveSubtitles(list, videoPath, tempDir, signal) {
     const saved = [];
     const { name } = path.parse(videoPath);
@@ -431,7 +455,7 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
         if (!response.ok) continue;
         const text = await response.text();
         const base = path.join(tempDir, `${name}${index ? `.${index + 1}` : ''}`);
-        let file = `${base}.${/^\s*WEBVTT/.test(text) ? 'vtt' : 'srt'}`;
+        let file = `${base}.${subtitleFormat(text)}`;
         await fs.writeFile(file, text);
         if (file.endsWith('.vtt')) {
           try {
@@ -447,6 +471,45 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
       }
     }
     return saved;
+  }
+
+  // Bettet einen auf der Seite gefundenen Untertitel ins Video ein. In MP4 verliert ASS seine Gestaltung,
+  // deshalb liegt er dann zusätzlich als Datei daneben. Klappt das Einbetten nicht, bleibt nur die Datei.
+  async function embedPageSubtitle(item, videoPath, tempDir, signal) {
+    let text;
+    try {
+      const response = await fetch(item.url, { headers: item.headers ?? {}, signal });
+      if (!response.ok) return [];
+      text = await response.text();
+    } catch {
+      if (signal?.aborted) throw new CanceledError();
+      return [];
+    }
+    const format = subtitleFormat(text);
+    const subtitleFile = path.join(tempDir, `untertitel.${format}`);
+    await fs.writeFile(subtitleFile, text);
+    const { name, ext } = path.parse(videoPath);
+    const container = ext.toLowerCase();
+    let codec = format === 'ass' ? 'ass' : 'srt';
+    if (['.mp4', '.m4v', '.mov'].includes(container)) codec = 'mov_text';
+    else if (container === '.webm') codec = 'webvtt';
+    const language = ISO_639_2[String(item.language ?? '').split('-')[0].toLowerCase()] ?? 'und';
+    const output = path.join(path.dirname(videoPath), `${name}.untertitel${ext}`);
+    const beside = () => moveFile(subtitleFile, path.dirname(videoPath), `${name}.${format}`);
+    try {
+      await run(tools.path('ffmpeg'), [
+        '-hide_banner', '-nostdin', '-y', '-i', videoPath, '-i', subtitleFile,
+        '-map', '0:v?', '-map', '0:a?', '-map', '1:0', '-c', 'copy', '-c:s', codec,
+        '-metadata:s:s:0', `language=${language}`, ...(item.label ? ['-metadata:s:s:0', `title=${item.label}`] : []),
+        '-disposition:s:0', 'default', ...(codec === 'mov_text' ? ['-movflags', '+faststart'] : []), output,
+      ], { signal });
+      await fs.rename(output, videoPath);
+      return format === 'ass' && codec !== 'ass' ? [await beside()] : [];
+    } catch {
+      await fs.rm(output, { force: true }).catch(() => {});
+      if (signal?.aborted) throw new CanceledError();
+      return [await beside()];
+    }
   }
 
   function addHistory(entry) {
@@ -566,7 +629,13 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
       const saved = [];
       for (const file of results) saved.push(await moveFile(file, options.folder));
       // Zu einem Abschnitt passen die Zeiten der Untertitel nicht, sie gelten für das ganze Video.
-      if (current.mode !== 'audio' && !current.sections.length && current.subtitles?.length) {
+      const withSubtitles = current.mode !== 'audio' && !current.sections.length;
+      const chosen = Number.isInteger(current.subtitle?.page) ? current.subtitles?.[current.subtitle.page] : null;
+      if (withSubtitles && chosen) {
+        job.update({ detail: t('Lädt Untertitel …'), progress: null });
+        saved.push(...await embedPageSubtitle(chosen, saved[0], tempDir, job.signal));
+      } else if (withSubtitles && current.subtitle === undefined && current.subtitles?.length) {
+        // Aus einer Liste geladen, ohne Auswahl: Alle gefundenen Untertitel landen neben dem Video.
         job.update({ detail: t('Lädt Untertitel …'), progress: null });
         saved.push(...await saveSubtitles(current.subtitles, saved[0], tempDir, job.signal));
       }
@@ -599,6 +668,7 @@ function register({ ipcMain, queue, store, tools, send, ytdlp }) {
         headers: source.headers,
         pageUrl: source.pageUrl,
         subtitles: source.subtitles ?? [],
+        subtitleTracks: [...(info.subtitleTracks ?? []), ...pageSubtitleTracks(source.subtitles)],
         playlist: null,
       });
     }
